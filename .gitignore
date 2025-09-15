@@ -1,0 +1,21 @@
+# Git
+.git
+
+# Python / Django
+__pycache__/
+*.pyc
+venv/
+db.sqlite3
+.env
+
+# Node.js / Vite
+my-anime-app/node_modules/
+my-anime-app/dist/
+my-anime-app/.env*
+my-anime-app/npm-debug.log*
+my-anime-app/yarn-error.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
