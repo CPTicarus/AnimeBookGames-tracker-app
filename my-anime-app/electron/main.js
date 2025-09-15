@@ -21,45 +21,40 @@ app.whenReady().then(() => {
     mainWindow.loadURL('http://localhost:5173');
 
     ipcMain.on('open-login-window', () => {
-    const loginWindow = new BrowserWindow({
+      const loginWindow = new BrowserWindow({
         width: 600,
         height: 800,
         parent: mainWindow,
         modal: true,
         show: true,
         webPreferences: {
-        session: persistentSession,
+          session: persistentSession,
         },
-    });
-    loginWindow.loadURL('http://127.0.0.1:8000/api/auth/login/');
+      });
+      loginWindow.loadURL('http://127.0.0.1:8000/api/auth/login/');
 
-    // This is the new, more robust method
-    const interval = setInterval(async () => {
+      const interval = setInterval(async () => {
         if (loginWindow.isDestroyed()) {
-        clearInterval(interval);
-        return;
+          clearInterval(interval);
+          return;
         }
 
         const currentURL = loginWindow.webContents.getURL();
 
         if (currentURL.startsWith('http://127.0.0.1:8000/api/auth/callback/')) {
-        // Stop checking
-        clearInterval(interval);
+          clearInterval(interval);
 
-        // Grab the JSON content from the page
-        const json = await loginWindow.webContents.executeJavaScript('document.body.innerText');
-        const tokenData = JSON.parse(json);
-        const accessToken = tokenData.access_token;
+          const json = await loginWindow.webContents.executeJavaScript('document.body.innerText');
+          const tokenData = JSON.parse(json);
+          const appToken = tokenData.token;
 
-        // Send the token to the main window
-        if (accessToken) {
-            mainWindow.webContents.send('login-success', accessToken);
+          if (appToken) {
+            mainWindow.webContents.send('login-success', appToken);
+          }
+
+          loginWindow.close();
         }
-
-        // Close the window
-        loginWindow.close();
-        }
-    }, 500); // Check the URL every 500 milliseconds
+      }, 500);
     });
   }
 

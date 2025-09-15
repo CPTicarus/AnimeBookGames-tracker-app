@@ -1,65 +1,76 @@
+// src/AnimeList.tsx
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
+// This makes TypeScript aware of our simplified preload API
 declare global {
   interface Window {
     electronAPI: {
       openLoginWindow: () => void;
+      // The callback will now pass our app's token
       onLoginSuccess: (callback: (event: any, token: string) => void) => void;
     };
   }
 }
 
-interface AnimeEntry { media: { id: number; title: { romaji: string; }; }; progress: number; }
-interface List { name: string; entries: AnimeEntry[]; }
+// 1. UPDATE: New interfaces to match our Django Serializers
+interface Media {
+  id: number;
+  title: string;
+  cover_image_url: string;
+}
+
+interface UserMedia {
+  id: number;
+  media: Media;
+  status: string;
+  progress: number;
+  score: number | null;
+}
 
 function AnimeList() {
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [lists, setLists] = useState<List[]>([]);
+  const [appToken, setAppToken] = useState<string | null>(null);
+  const [userMediaList, setUserMediaList] = useState<UserMedia[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // --- THIS IS THE KEY CHANGE ---
-  // This function now requires the token to be passed in
-  const fetchData = async (token: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Create an Axios instance with the Authorization header
-      const api = axios.create({
-        baseURL: 'http://127.0.0.1:8000',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const response = await api.get('/api/user/list/');
-      setLists(response.data.MediaListCollection.lists);
-      setAccessToken(token);
-    } catch (err) {
-      setAccessToken(null);
-      setError('Failed to fetch data with the provided token.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
-    // Listen for the login-success event and the token from the main process
-    window.electronAPI.onLoginSuccess((event, token) => {
-      console.log('Login successful, received token:', token);
-      fetchData(token);
+    // This listener now receives our app's token from the main process
+    window.electronAPI.onLoginSuccess((_event, token) => {
+      console.log('Login successful, received app token:', token);
+      setAppToken(token); // Store the token
     });
   }, []);
 
-  if (loading) return <p>Loading...</p>;
-  if (error) return <p style={{ color: 'red' }}>{error}</p>;
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!appToken) return; // Only fetch if we have a token
 
-  if (!accessToken) {
+      setLoading(true);
+      try {
+        const response = await axios.get('/api/user/list/', {
+          headers: {
+            // Use the token for authorization
+            'Authorization': `Token ${appToken}`
+          }
+        });
+        setUserMediaList(response.data);
+      } catch (err) {
+        console.error("Failed to fetch user list", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [appToken]); // This effect runs whenever the appToken changes
+
+  if (loading) return <p>Loading...</p>;
+
+  if (!appToken) {
     return (
       <div>
         <h1>Welcome</h1>
-        <p>Please log in to see your anime list.</p>
+        <p>Please log in to see your list.</p>
         <button onClick={() => window.electronAPI.openLoginWindow()}>
           Login with AniList
         </button>
@@ -69,20 +80,18 @@ function AnimeList() {
 
   return (
     <div>
-      <h1>Your Anime Lists</h1>
-      {/* ... (The rest of the rendering code is the same) ... */}
-      {lists.map((list) => (
-        <div key={list.name}>
-          <h2>{list.name}</h2>
-          <ul>
-            {list.entries.map((entry) => (
-              <li key={entry.media.id}>
-                {entry.media.title.romaji} - Progress: {entry.progress}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      <h1>Your Media List</h1>
+      {userMediaList.length === 0 ? (
+        <p>Your list is empty. Time to add some media!</p>
+      ) : (
+        <ul>
+          {userMediaList.map((item) => (
+            <li key={item.id}>
+              {item.media.title} - Status: {item.status}, Progress: {item.progress}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework', 
+    'rest_framework.authtoken',
     'corsheaders', 
     'api',            
 ]
@@ -144,3 +145,7 @@ SESSION_COOKIE_SECURE = False       # disable HTTPS-only in dev
 CSRF_COOKIE_SECURE = False
 SESSION_COOKIE_SAMESITE = "None"
 CSRF_COOKIE_SAMESITE = "None"
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:5173',
+]

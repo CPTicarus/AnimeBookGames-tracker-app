@@ -12,6 +12,28 @@ transport = RequestsHTTPTransport(url=ANILIST_API_URL)
 # Create the GQL client
 client = Client(transport=transport, fetch_schema_from_transport=False)
 
+def get_viewer_profile(access_token):
+    """
+    Fetches the profile of the user corresponding to the access token.
+    """
+    authed_transport = RequestsHTTPTransport(
+        url=ANILIST_API_URL,
+        headers={'Authorization': f'Bearer {access_token}'}
+    )
+    authed_client = Client(transport=authed_transport, fetch_schema_from_transport=False)
+    
+    query = gql('''
+        query {
+            Viewer {
+                id
+                name
+            }
+        }
+    ''')
+    
+    result = authed_client.execute(query)
+    return result['Viewer']
+
 def search_anime(query_string):
     """
     Searches for an anime on AniList.
