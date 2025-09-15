@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.contrib.auth import login
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.shortcuts import redirect
 from django.http import JsonResponse
@@ -21,6 +21,36 @@ def csrf_token_view(request):
     A simple view to ensure the CSRF cookie is set.
     """
     return JsonResponse({"detail": "CSRF cookie set."})
+
+class RegisterView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        if not username or not password:
+            return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.create_user(username=username, password=password)
+            # Also create the associated profile
+            Profile.objects.create(user=user)
+            # Create a token for the new user
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({"success": "User created successfully", "token": token.key}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
+
+# ADD THIS NEW VIEW FOR LOCAL LOGIN
+class LoginView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        user = authenticate(username=username, password=password)
+
+        if user:
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({"token": token.key}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
 class MediaSearchView(APIView):
     """

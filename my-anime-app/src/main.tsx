@@ -1,15 +1,18 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
 import axios from 'axios';
+import { BrowserRouter } from 'react-router-dom'; // Import the router
 
+axios.defaults.baseURL = 'http://127.0.0.1:8000';
+axios.defaults.withCredentials = true;
 
-axios.defaults.baseURL = 'http://127.0.0.1:8000'; // Set the base URL for all requests
-axios.defaults.withCredentials = true; // Allow cookies and CSRF tokens to be sent
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    {/* Wrap the App component with BrowserRouter */}
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </React.StrictMode>,
+);
