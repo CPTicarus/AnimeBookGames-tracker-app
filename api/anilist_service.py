@@ -1,4 +1,3 @@
-# api/anilist_service.py
 from gql import gql, Client
 from gql.transport.requests import RequestsHTTPTransport
 import requests

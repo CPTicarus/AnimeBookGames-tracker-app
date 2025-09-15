@@ -1,39 +1,79 @@
-import { app, BrowserWindow, ipcMain } from 'electron'; // Add ipcMain
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-function createWindow() {
-  const mainWindow = new BrowserWindow({ // Renamed to mainWindow
-    width: 800,
-    height: 600,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-    },
-  });
+app.whenReady().then(() => {
+  const persistentSession = session.fromPartition('persist:anime-tracker');
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-  }
+  function createWindow() {
+    const mainWindow = new BrowserWindow({
+      width: 800,
+      height: 600,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        session: persistentSession,
+      },
+    });
 
-  // Listen for the request to open the login window
-  ipcMain.on('open-login-window', () => {
-    const loginWindow = new BrowserWindow({ width: 600, height: 800, parent: mainWindow, modal: true });
+    mainWindow.loadURL('http://localhost:5173');
+
+    ipcMain.on('open-login-window', () => {
+    const loginWindow = new BrowserWindow({
+        width: 600,
+        height: 800,
+        parent: mainWindow,
+        modal: true,
+        show: true,
+        webPreferences: {
+        session: persistentSession,
+        },
+    });
     loginWindow.loadURL('http://127.0.0.1:8000/api/auth/login/');
 
-    // Check if the login was successful by monitoring for the callback URL
-    loginWindow.webContents.on('will-redirect', (event, url) => {
-      if (url.startsWith('http://127.0.0.1:8000/api/auth/callback/')) {
-        loginWindow.close();
-        // Tell the main window that login was successful
-        mainWindow.webContents.send('login-success');
-      }
-    });
-  });
-}
+    // This is the new, more robust method
+    const interval = setInterval(async () => {
+        if (loginWindow.isDestroyed()) {
+        clearInterval(interval);
+        return;
+        }
 
-app.whenReady().then(createWindow);
+        const currentURL = loginWindow.webContents.getURL();
+
+        if (currentURL.startsWith('http://127.0.0.1:8000/api/auth/callback/')) {
+        // Stop checking
+        clearInterval(interval);
+
+        // Grab the JSON content from the page
+        const json = await loginWindow.webContents.executeJavaScript('document.body.innerText');
+        const tokenData = JSON.parse(json);
+        const accessToken = tokenData.access_token;
+
+        // Send the token to the main window
+        if (accessToken) {
+            mainWindow.webContents.send('login-success', accessToken);
+        }
+
+        // Close the window
+        loginWindow.close();
+        }
+    }, 500); // Check the URL every 500 milliseconds
+    });
+  }
+
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});

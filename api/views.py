@@ -5,6 +5,7 @@ from . import anilist_service
 from django.shortcuts import redirect
 from django.conf import settings
 import requests 
+from rest_framework.renderers import JSONRenderer
 
 
 class AnimeSearchAPIView(APIView):
@@ -44,37 +45,50 @@ class AniListLoginView(APIView):
         return redirect(auth_url)
 
 class AniListCallbackView(APIView):
+    renderer_classes = [JSONRenderer] 
+
     def get(self, request):
-        # AniList will send the user back with a 'code' in the URL
         auth_code = request.query_params.get('code')
-        
+
         if not auth_code:
             return Response({"error": "Authorization code not provided"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
-            # Exchange the code for an access token
             token_data = anilist_service.exchange_code_for_token(auth_code)
             access_token = token_data.get('access_token')
 
-            # IMPORTANT: Store the access token in the user's session
-            # This is how we'll remember they are logged in
+            # Store the token in the server-side session as before
             request.session['anilist_token'] = access_token
-            
-            return Response({"success": "Successfully authenticated!", "token": access_token}, status=status.HTTP_200_OK)
-        
+
+            return Response({
+                "success": "Successfully authenticated!",
+                "access_token": access_token 
+            }, status=status.HTTP_200_OK)
+
         except requests.exceptions.RequestException as e:
             return Response({"error": "Failed to get token", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class UserAnimeListView(APIView):
     def get(self, request):
-        # Retrieve the token we stored in the session
-        access_token = request.session.get('anilist_token')
-        
-        if not access_token:
-            return Response({"error": "User not authenticated. Please login first."}, status=status.HTTP_401_UNAUTHORIZED)
-        
+        # 1. Get the token from the 'Authorization' header sent by React
+        auth_header = request.headers.get('Authorization')
+
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return Response(
+                {"error": "Authorization header missing or invalid."},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # 2. Extract the token itself (it comes after "Bearer ")
+        access_token = auth_header.split(' ')[1]
+
+        # 3. Use that token to fetch data from our service
         try:
             user_list = anilist_service.get_user_anime_list(access_token)
             return Response(user_list, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({"error": "Failed to fetch user list", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # This could happen if the token is expired or invalid
+            return Response(
+                {"error": "Failed to fetch user list from AniList.", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

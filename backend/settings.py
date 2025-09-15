@@ -139,3 +139,8 @@ CORS_ALLOWED_ORIGINS = [
 ]
 # This allows your Django backend to share cookies with your frontend
 CORS_ALLOW_CREDENTIALS = True 
+
+SESSION_COOKIE_SECURE = False       # disable HTTPS-only in dev
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SAMESITE = "None"
