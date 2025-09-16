@@ -1,12 +1,11 @@
-// src/pages/LibraryPage.tsx
 import { useState, useEffect } from 'react';
 import api from '../api'; 
 
-interface LibraryPageProps {
-  token: string;
+interface Media {
+  id: number;
+  primary_title: string;   // Formerly 'title'
+  secondary_title: string | null; // Formerly 'english_title'
 }
-
-interface Media { id: number; title: string; }
 interface UserMedia { id: number; media: Media; status: string; progress: number; }
 
 function LibraryPage() {
@@ -17,7 +16,6 @@ function LibraryPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // The Authorization header is now added automatically!
         const response = await api.get('/api/user/list/');
         setUserMediaList(response.data);
       } catch (err) {
@@ -35,12 +33,19 @@ function LibraryPage() {
     <div>
       <h1>Your Media List</h1>
       {userMediaList.length === 0 ? (
-        <p>Your list is empty. Time to add some media!</p>
+        <p>Your list is empty. Go to the Import page to sync your library!</p>
       ) : (
         <ul>
+          {/* --- UPDATE THE RENDERED LIST ITEM --- */}
           {userMediaList.map((item) => (
-            <li key={item.id}>
-              {item.media.title} - Status: {item.status}, Progress: {item.progress}
+            <li key={item.id} className="media-item">
+              <span className={`status-dot status-dot-${item.status}`}></span>
+              <div className="title-block">
+                {/* Use secondary_title if it exists, otherwise use primary_title */}
+                <span className="title-english">{item.media.secondary_title || item.media.primary_title}</span>
+                {/* Only show the romaji title if an english title exists */}
+                <span className="title-romaji">{item.media.secondary_title ? item.media.primary_title : ''}</span>
+              </div>
             </li>
           ))}
         </ul>

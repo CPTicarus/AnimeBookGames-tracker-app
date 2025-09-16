@@ -115,7 +115,10 @@ def get_user_anime_list(access_token):
                     entries {
                         media {
                             id
-                            title { romaji }
+                            title {
+                                romaji
+                                english 
+                            }
                         }
                         score
                         progress
@@ -157,7 +160,10 @@ def fetch_full_user_list(access_token):
                     progress
                     media {
                         id
-                        title { romaji }
+                        title {
+                            romaji
+                            english
+                        }
                         coverImage { large }
                     }
                 }

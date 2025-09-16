@@ -26,7 +26,10 @@ class Media(models.Model):
     media_type = models.CharField(max_length=5, choices=MEDIA_TYPE_CHOICES)
     
     # Core information
-    title = models.CharField(max_length=255)
+    primary_title = models.CharField(max_length=255)
+    # An optional secondary title (e.g., Romaji name, original title, subtitle).
+    secondary_title = models.CharField(max_length=255, blank=True, null=True)
+    
     description = models.TextField(blank=True, null=True)
     cover_image_url = models.URLField(blank=True, null=True)
 

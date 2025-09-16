@@ -63,7 +63,7 @@ class MediaSearchView(APIView):
             return Response({"error": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         # 1. First, try to find the media in our local database (the cache)
-        # Note: This is a very simple search. A real app would use a more robust search tool.
+        # Note: This is a very simple search.
         local_results = Media.objects.filter(title__icontains=query, media_type=Media.ANIME)
         if local_results.exists():
             serializer = MediaSerializer(local_results, many=True)
@@ -82,6 +82,7 @@ class MediaSearchView(APIView):
                 anilist_id=media_data['id'],
                 defaults={
                     'title': media_data['title']['romaji'],
+                    'english_title': media_data['title']['english'],
                     'media_type': Media.ANIME,
                     'cover_image_url': media_data['coverImage']['large'],
                 }
@@ -99,7 +100,7 @@ class UserMediaListView(APIView):
 
     def get(self, request):
         user_profile = request.user.profile
-        user_media_list = UserMedia.objects.filter(profile=user_profile)
+        user_media_list = UserMedia.objects.filter(profile=user_profile).order_by('-score')
         serializer = UserMediaSerializer(user_media_list, many=True)
         return Response(serializer.data)
 
@@ -182,10 +183,12 @@ class SyncAniListView(APIView):
                 media_data = entry['media']
 
                 # Get or create the Media item (cache it)
-                media_obj, _ = Media.objects.get_or_create(
+                media_obj, _ = Media.objects.update_or_create(
                     anilist_id=media_data['id'],
                     defaults={
-                        'title': media_data['title']['romaji'],
+                        # Use the new generic field names
+                        'primary_title': media_data['title']['romaji'],
+                        'secondary_title': media_data['title']['english'],
                         'media_type': Media.ANIME,
                         'cover_image_url': media_data['coverImage']['large'],
                     }
