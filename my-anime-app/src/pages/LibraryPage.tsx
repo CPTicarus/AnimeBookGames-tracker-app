@@ -1,27 +1,24 @@
+// src/pages/LibraryPage.tsx
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api'; 
 
-// Define props to accept the token from the App component
 interface LibraryPageProps {
   token: string;
 }
 
-interface Media { id: number; title: string; cover_image_url: string; }
-interface UserMedia { id: number; media: Media; status: string; progress: number; score: number | null; }
+interface Media { id: number; title: string; }
+interface UserMedia { id: number; media: Media; status: string; progress: number; }
 
-function LibraryPage({ token }: LibraryPageProps) {
+function LibraryPage() {
   const [userMediaList, setUserMediaList] = useState<UserMedia[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!token) return;
-
       setLoading(true);
       try {
-        const response = await axios.get('/api/user/list/', {
-          headers: { 'Authorization': `Token ${token}` }
-        });
+        // The Authorization header is now added automatically!
+        const response = await api.get('/api/user/list/');
         setUserMediaList(response.data);
       } catch (err) {
         console.error("Failed to fetch user list", err);
@@ -29,9 +26,8 @@ function LibraryPage({ token }: LibraryPageProps) {
         setLoading(false);
       }
     };
-
     fetchData();
-  }, [token]); // This effect runs when the component loads and if the token changes
+  }, []);
 
   if (loading) return <p>Loading your library...</p>;
 

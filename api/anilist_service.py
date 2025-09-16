@@ -130,3 +130,55 @@ def get_user_anime_list(access_token):
     list_result = authed_client.execute(list_query, variable_values=params)
 
     return list_result
+
+def fetch_full_user_list(access_token):
+    """
+    Fetches all entries from a user's anime list, handling pagination.
+    """
+    authed_transport = RequestsHTTPTransport(
+        url=ANILIST_API_URL,
+        headers={'Authorization': f'Bearer {access_token}'}
+    )
+    authed_client = Client(transport=authed_transport, fetch_schema_from_transport=False)
+
+    # Get the user's name first
+    viewer_profile = get_viewer_profile(access_token)
+    user_name = viewer_profile['name']
+
+    query = gql('''
+        query ($userName: String, $page: Int, $perPage: Int) {
+            Page (page: $page, perPage: $perPage) {
+                pageInfo {
+                    hasNextPage
+                }
+                mediaList (userName: $userName, type: ANIME) {
+                    status
+                    score
+                    progress
+                    media {
+                        id
+                        title { romaji }
+                        coverImage { large }
+                    }
+                }
+            }
+        }
+    ''')
+
+    all_entries = []
+    page = 1
+    per_page = 50 # AniList API max per page
+
+    while True:
+        params = {"userName": user_name, "page": page, "perPage": per_page}
+        result = authed_client.execute(query, variable_values=params)
+
+        page_data = result['Page']
+        all_entries.extend(page_data['mediaList'])
+
+        if not page_data['pageInfo']['hasNextPage']:
+            break
+
+        page += 1
+
+    return all_entries

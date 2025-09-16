@@ -5,7 +5,7 @@ class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
 
     anilist_username = models.CharField(max_length=100, blank=True, null=True)
-    # We could add fields for other services later, e.g., tmdb_account_id
+    anilist_access_token = models.CharField(max_length=255, blank=True, null=True)
 
     def __str__(self):
         return self.user.username

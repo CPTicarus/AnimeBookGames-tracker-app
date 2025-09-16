@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { AppBar, Toolbar, IconButton, Typography, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Box } from '@mui/material';
+import { AppBar, Toolbar, IconButton, Typography, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Box, Button } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 
-function Layout() {
+interface LayoutProps {
+  onLogout: () => void;
+}
+
+function Layout({ onLogout }: LayoutProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const navigate = useNavigate(); // <-- Add the navigate hook
+  const navigate = useNavigate();
 
   const handleNavigation = (path: string) => {
     navigate(path);
-    setDrawerOpen(false); // Also close the drawer on navigation
+    setDrawerOpen(false);
   };
 
   const menuItems = [
@@ -36,19 +40,15 @@ function Layout() {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             My Media Tracker
           </Typography>
+          <Button color="inherit" onClick={onLogout}>Logout</Button>
         </Toolbar>
       </AppBar>
 
       <Drawer anchor="left" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-        <Box
-          sx={{ width: 250 }}
-          role="presentation"
-        >
+        <Box sx={{ width: 250 }} role="presentation">
           <List>
             {menuItems.map((item) => (
               <ListItem key={item.text} disablePadding>
-                {/* --- THIS IS THE KEY CHANGE --- */}
-                {/* We now use a direct onClick handler for navigation */}
                 <ListItemButton onClick={() => handleNavigation(item.path)}>
                   <ListItemIcon>{item.icon}</ListItemIcon>
                   <ListItemText primary={item.text} />

@@ -1,15 +1,16 @@
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from django.shortcuts import redirect
 from django.http import JsonResponse
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
-from rest_framework.authentication import TokenAuthentication
+from rest_framework.authentication import TokenAuthentication, SessionAuthentication 
 
 from . import anilist_service
 from .models import Media, Profile, UserMedia
@@ -91,50 +92,6 @@ class MediaSearchView(APIView):
         except Exception as e:
             return Response({"error": "An error occurred", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-class AniListLoginView(APIView):
-    """
-    This view doesn't need to change. Its only job is to redirect.
-    """
-    def get(self, request):
-        auth_url = (
-            f'https://anilist.co/api/v2/oauth/authorize'
-            f'?client_id={settings.ANILIST_CLIENT_ID}'
-            f'&response_type=code'
-        )
-        return redirect(auth_url)
-
-
-class AniListCallbackView(APIView):
-    renderer_classes = [JSONRenderer]
-    def get(self, request):
-        auth_code = request.query_params.get('code')
-        if not auth_code:
-            return Response({"error": "Auth code missing."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            # ... (code to get anilist_profile is the same)
-            anilist_token_data = anilist_service.exchange_code_for_token(auth_code)
-            access_token = anilist_token_data['access_token']
-            anilist_profile = anilist_service.get_viewer_profile(access_token)
-            anilist_username = anilist_profile['name']
-
-            user, created = User.objects.get_or_create(username=anilist_username)
-            if created:
-                Profile.objects.create(user=user, anilist_username=anilist_username)
-
-            # --- THIS IS THE KEY CHANGE ---
-            # Instead of logging into a session, create or get a DRF token for this user
-            token, _ = Token.objects.get_or_create(user=user)
-
-            return Response({
-                "success": "Successfully authenticated!",
-                "token": token.key, # Return our app's token
-                "username": user.username,
-            }, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({"error": "Authentication failed", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 class UserMediaListView(APIView):
     # Tell this view to use TokenAuthentication instead of SessionAuthentication
     authentication_classes = [TokenAuthentication]
@@ -145,3 +102,107 @@ class UserMediaListView(APIView):
         user_media_list = UserMedia.objects.filter(profile=user_profile)
         serializer = UserMediaSerializer(user_media_list, many=True)
         return Response(serializer.data)
+
+class AniListLoginView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # The user is already authenticated by the classes above.
+        # We can get their token directly.
+        try:
+            token = Token.objects.get(user=request.user)
+        except Token.DoesNotExist:
+            return Response({"error": "Invalid token for user."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Construct the URL with the user's app token as the 'state' parameter
+        auth_url = (
+            f'https://anilist.co/api/v2/oauth/authorize'
+            f'?client_id={settings.ANILIST_CLIENT_ID}'
+            f'&response_type=code'
+            f'&state={token.key}' # Use the token key as the state
+        )
+        return Response({"auth_url": auth_url}, status=status.HTTP_200_OK)
+    
+@method_decorator(csrf_exempt, name='dispatch')
+class AniListCallbackView(APIView):
+    # This view is now public, its security comes from the 'state' parameter
+    authentication_classes = []
+    permission_classes = []
+    renderer_classes = [JSONRenderer]
+
+    def get(self, request):
+        auth_code = request.query_params.get('code')
+        # Get the 'state' parameter back from AniList
+        app_token_key = request.query_params.get('state')
+
+        if not auth_code or not app_token_key:
+            return Response({"error": "Auth code or state missing."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            # Use the app token from 'state' to find the user
+            token_obj = Token.objects.get(key=app_token_key)
+            user = token_obj.user
+            profile = user.profile
+
+            # Exchange AniList code for an AniList token
+            anilist_token_data = anilist_service.exchange_code_for_token(auth_code)
+            access_token = anilist_token_data['access_token']
+
+            anilist_profile = anilist_service.get_viewer_profile(access_token)
+            anilist_username = anilist_profile['name']
+
+            # Update the user's profile with their AniList info
+            profile.anilist_username = anilist_username
+            profile.anilist_access_token = access_token
+            profile.save()
+
+            return Response({
+                "success": f"Successfully linked AniList account '{anilist_username}'!",
+            }, status=status.HTTP_200_OK)
+        except Token.DoesNotExist:
+            return Response({"error": "Invalid state token. Authentication failed."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": "Authentication failed", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class SyncAniListView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        profile = request.user.profile
+        if not profile.anilist_access_token:
+            return Response({"error": "AniList account not linked."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Fetch the full list from the service
+            full_list = anilist_service.fetch_full_user_list(profile.anilist_access_token)
+
+            # Process the list and save to the database
+            for entry in full_list:
+                media_data = entry['media']
+
+                # Get or create the Media item (cache it)
+                media_obj, _ = Media.objects.get_or_create(
+                    anilist_id=media_data['id'],
+                    defaults={
+                        'title': media_data['title']['romaji'],
+                        'media_type': Media.ANIME,
+                        'cover_image_url': media_data['coverImage']['large'],
+                    }
+                )
+
+                # Create or update the user's personal tracking info for this media
+                UserMedia.objects.update_or_create(
+                    profile=profile,
+                    media=media_obj,
+                    defaults={
+                        'status': entry['status'],
+                        'score': entry['score'],
+                        'progress': entry['progress'],
+                    }
+                )
+
+            return Response({"success": f"Sync complete. Processed {len(full_list)} items."}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": "An error occurred during sync", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

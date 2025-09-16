@@ -20,7 +20,7 @@ app.whenReady().then(() => {
 
     mainWindow.loadURL('http://localhost:5173');
 
-    ipcMain.on('open-login-window', () => {
+    ipcMain.on('open-login-window', (event, url) => {
       const loginWindow = new BrowserWindow({
         width: 600,
         height: 800,
@@ -31,7 +31,7 @@ app.whenReady().then(() => {
           session: persistentSession,
         },
       });
-      loginWindow.loadURL('http://127.0.0.1:8000/api/auth/login/');
+      loginWindow.loadURL(url);
 
       const interval = setInterval(async () => {
         if (loginWindow.isDestroyed()) {

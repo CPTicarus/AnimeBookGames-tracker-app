@@ -1,21 +1,51 @@
+import { useState } from 'react';
+import api from '../api'; 
 
 function ImportPage() {
-  const handleSync = () => {
-    // This triggers the login popup. After login, we need to call a new sync endpoint.
-    window.electronAPI.openLoginWindow();
-    // TODO: After login success, call a new backend endpoint like /api/sync/anilist
-    // We will build this endpoint in a future step.
-    alert("After logging in, your list will be synced in the background. (Functionality to be built)");
+  const [message, setMessage] = useState('');
+
+  const handleConnect = async () => {
+    setMessage('Getting AniList login URL...');
+    try {
+      // Change this from api.post to api.get
+      const response = await api.get('/api/auth/login/');
+      const authUrl = response.data.auth_url;
+      window.electronAPI.openLoginWindow(authUrl);
+      setMessage('Please complete the login in the popup window.');
+    } catch (err) {
+      setMessage('Could not connect to AniList.');
+      console.error(err);
+    }
+  };
+
+  const handleSync = async () => {
+    setMessage('Syncing your AniList library... This may take a moment.');
+    try {
+      // The Authorization header is now added automatically!
+      const response = await api.post('/api/sync/anilist/');
+      setMessage(response.data.success);
+    } catch (err: any) {
+      setMessage(err.response?.data?.error || 'Failed to sync.');
+    }
   };
 
   return (
     <div>
       <h1>Import & Sync</h1>
-      <p>Connect to a service to import your existing lists or to keep your local library in sync.</p>
+      <p>Connect your services to enable syncing.</p>
 
-      <button onClick={handleSync}>
-        Connect and Sync with AniList
+      <button onClick={handleConnect}>
+        1. Connect to AniList Account
       </button>
+
+      <hr style={{ margin: '20px 0' }} />
+
+      <p>Once your account is connected, you can sync your library.</p>
+      <button onClick={handleSync}>
+        2. Sync AniList Library Now
+      </button>
+
+      {message && <p>{message}</p>}
     </div>
   );
 }
