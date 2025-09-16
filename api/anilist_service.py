@@ -57,7 +57,6 @@ def search_anime(query_string):
     ''')
     params = {"search": query_string}
 
-    # We removed the try/except block. If this fails, it will raise an exception.
     result = client.execute(query, variable_values=params)
     return result
 
