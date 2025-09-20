@@ -60,7 +60,7 @@ class UserMedia(models.Model):
     media = models.ForeignKey(Media, on_delete=models.CASCADE)
     
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, blank=True, null=True)
-    score = models.IntegerField(blank=True, null=True) 
+    score = models.FloatField(blank=True, null=True)
     progress = models.IntegerField(default=0) 
     
     start_date = models.DateField(blank=True, null=True)

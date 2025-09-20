@@ -144,7 +144,6 @@ def fetch_full_user_list(access_token):
     )
     authed_client = Client(transport=authed_transport, fetch_schema_from_transport=False)
 
-    # Get the user's name first
     viewer_profile = get_viewer_profile(access_token)
     user_name = viewer_profile['name']
 
@@ -173,7 +172,7 @@ def fetch_full_user_list(access_token):
 
     all_entries = []
     page = 1
-    per_page = 50 # AniList API max per page
+    per_page = 50 
 
     while True:
         params = {"userName": user_name, "page": page, "perPage": per_page}
@@ -186,5 +185,5 @@ def fetch_full_user_list(access_token):
             break
 
         page += 1
-
+         
     return all_entries
