@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import MediaSearchView, AniListLoginView, AniListCallbackView, UserMediaListView, csrf_token_view, RegisterView, LoginView, SyncAniListView
+from .views import MediaSearchView, AniListLoginView, AniListCallbackView, UserMediaListView, csrf_token_view, RegisterView, LoginView, SyncAniListView, UserMediaAddView
 
 urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='register'),
@@ -11,4 +11,5 @@ urlpatterns = [
     path('auth/callback/', AniListCallbackView.as_view(), name='anilist-callback'),
     path('user/list/', UserMediaListView.as_view(), name='user-media-list'),
     path('sync/anilist/', SyncAniListView.as_view(), name='sync-anilist'),
+    path('list/add/', UserMediaAddView.as_view(), name='user-media-add'), 
 ]

@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication 
 
-from . import anilist_service
+from .services import anilist_service, tmdb_service
 from .models import Media, Profile, UserMedia
 from .serializers import MediaSerializer, UserMediaSerializer
 
@@ -54,45 +54,115 @@ class LoginView(APIView):
             return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
 class MediaSearchView(APIView):
-    """
-    Searches for media. Implements caching logic.
-    """
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         query = request.query_params.get('q', None)
         if not query:
             return Response({"error": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1. First, try to find the media in our local database (the cache)
-        # Note: This is a very simple search.
-        local_results = Media.objects.filter(title__icontains=query, media_type=Media.ANIME)
-        if local_results.exists():
-            serializer = MediaSerializer(local_results, many=True)
+        combined_results = []
+        anilist_object = None
+
+        # 1. Always search AniList first.
+        try:
+            anilist_raw_results = anilist_service.search_anime(query)
+            if anilist_raw_results and anilist_raw_results.get('Media'):
+                media_data = anilist_raw_results['Media']
+                
+                # Cache the result in our database
+                anilist_object, _ = Media.objects.update_or_create(
+                    anilist_id=media_data['id'],
+                    defaults={
+                        'primary_title': media_data['title']['romaji'],
+                        'secondary_title': media_data['title']['english'],
+                        'media_type': Media.ANIME,
+                        'cover_image_url': media_data['coverImage']['large'],
+                    }
+                )
+
+                query_lower = query.lower()
+                romaji_lower = (media_data['title'].get('romaji') or '').lower()
+                english_lower = (media_data['title'].get('english') or '').lower()
+
+                if query_lower == romaji_lower or query_lower == english_lower:
+                    # If it's an exact match, this is the only result we need.
+                    serializer = MediaSerializer([anilist_object], many=True)
+                    return Response(serializer.data, status=status.HTTP_200_OK)
+                
+                # If not an exact match, add it to our list and search TMDB as well.
+                combined_results.append(anilist_object)
+
+        except Exception as e:
+            print(f"AniList search failed for query '{query}': {e}")
+
+        # 2. If it wasn't an exact match on AniList, search TMDB.
+        try:
+            # Search TMDB for Movies
+            movie_results = tmdb_service.search_movies(query)
+            if movie_results:
+                for movie in movie_results[:5]:
+                    if not movie.get('poster_path'): continue
+                    media_obj, _ = Media.objects.update_or_create(
+                        tmdb_id=movie['id'], media_type=Media.MOVIE,
+                        defaults={
+                            'primary_title': movie['title'], 'secondary_title': movie.get('original_title'),
+                            'cover_image_url': f"https://image.tmdb.org/t/p/w500{movie['poster_path']}", 'description': movie.get('overview'),
+                        }
+                    )
+                    combined_results.append(media_obj)
+
+            # Search TMDB for TV Shows
+            tv_show_results = tmdb_service.search_tv_shows(query)
+            if tv_show_results:
+                for show in tv_show_results[:5]:
+                    if not show.get('poster_path'): continue
+                    media_obj, _ = Media.objects.update_or_create(
+                        tmdb_id=show['id'], media_type=Media.TV_SHOW,
+                        defaults={
+                            'primary_title': show['name'], 'secondary_title': show.get('original_name'),
+                            'cover_image_url': f"https://image.tmdb.org/t/p/w500{show['poster_path']}", 'description': show.get('overview'),
+                        }
+                    )
+                    combined_results.append(media_obj)
+            
+            serializer = MediaSerializer(combined_results, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
 
-        # 2. If not in our DB, fetch from AniList
-        try:
-            anilist_data = anilist_service.search_anime(query)
-            media_data = anilist_data.get('Media')
-
-            if not media_data:
-                return Response({"message": "Not found on AniList"}, status=status.HTTP_404_NOT_FOUND)
-
-            # 3. Save the result to our database to cache it for next time
-            media_obj, created = Media.objects.get_or_create(
-                anilist_id=media_data['id'],
-                defaults={
-                    'title': media_data['title']['romaji'],
-                    'english_title': media_data['title']['english'],
-                    'media_type': Media.ANIME,
-                    'cover_image_url': media_data['coverImage']['large'],
-                }
-            )
-            
-            serializer = MediaSerializer(media_obj)
-            return Response([serializer.data], status=status.HTTP_200_OK) # Return as a list
         except Exception as e:
-            return Response({"error": "An error occurred", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "An error occurred during TMDB search", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class UserMediaAddView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        media_id = request.data.get('media_id')
+        if not media_id:
+            return Response({"error": "media_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            media_item = Media.objects.get(id=media_id)
+            profile = request.user.profile
+
+            # Use get_or_create to avoid adding duplicates
+            user_media_item, created = UserMedia.objects.get_or_create(
+                profile=profile,
+                media=media_item,
+                defaults={'status': 'PLANNED'} # Default to 'Planned' status
+            )
+
+            if created:
+                return Response({"success": f"'{media_item.primary_title}' added to your list."}, status=status.HTTP_201_CREATED)
+            else:
+                return Response({"message": f"'{media_item.primary_title}' is already in your list."}, status=status.HTTP_200_OK)
+
+        except Media.DoesNotExist:
+            return Response({"error": "Media not found."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": "An error occurred.", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
 class UserMediaListView(APIView):
     # Tell this view to use TokenAuthentication instead of SessionAuthentication
     authentication_classes = [TokenAuthentication]

@@ -16,11 +16,13 @@ class Media(models.Model):
     MOVIE = 'MOVIE'
     BOOK = 'BOOK'
     GAME = 'GAME'
+    TV_SHOW = 'TV'
     MEDIA_TYPE_CHOICES = [
         (ANIME, 'Anime'),
         (MOVIE, 'Movie'),
         (BOOK, 'Book'),
         (GAME, 'Game'),
+        (TV_SHOW, 'TV Show'),
     ]
 
     media_type = models.CharField(max_length=5, choices=MEDIA_TYPE_CHOICES)
