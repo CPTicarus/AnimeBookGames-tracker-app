@@ -6,7 +6,11 @@ TMDB_API_URL = 'https://api.themoviedb.org/3'
 
 def search_movies(query):
     search_url = f"{TMDB_API_URL}/search/movie"
-    params = { 'api_key': TMDB_API_KEY, 'query': query }
+    params = { 
+        'api_key': TMDB_API_KEY,
+        'query': query ,
+        'language': 'en-US'
+    }
     try:
         response = requests.get(search_url, params=params)
         response.raise_for_status()
@@ -26,7 +30,7 @@ def search_tv_shows(query):
     params = {
         'api_key': TMDB_API_KEY,
         'query': query,
-        'without_genres': '16'  # Exclude the "Animation" genre
+        'language': 'en-US'
     }
 
     try:

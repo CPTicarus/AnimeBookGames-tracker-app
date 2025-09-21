@@ -25,7 +25,7 @@ class Media(models.Model):
         (TV_SHOW, 'TV Show'),
     ]
 
-    media_type = models.CharField(max_length=5, choices=MEDIA_TYPE_CHOICES)
+    media_type = models.CharField(max_length=7, choices=MEDIA_TYPE_CHOICES)
     
     # Core information
     primary_title = models.CharField(max_length=255)

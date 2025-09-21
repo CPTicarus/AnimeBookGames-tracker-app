@@ -10,7 +10,8 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
-from rest_framework.authentication import TokenAuthentication, SessionAuthentication 
+from rest_framework.authentication import TokenAuthentication
+from difflib import SequenceMatcher
 
 from .services import anilist_service, tmdb_service
 from .models import Media, Profile, UserMedia
@@ -62,17 +63,14 @@ class MediaSearchView(APIView):
         if not query:
             return Response({"error": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        combined_results = []
-        anilist_object = None
+        anilist_results = []
+        tmdb_results = []
 
-        # 1. Always search AniList first.
+        # 1. Search AniList and cache all results
         try:
-            anilist_raw_results = anilist_service.search_anime(query)
-            if anilist_raw_results and anilist_raw_results.get('Media'):
-                media_data = anilist_raw_results['Media']
-                
-                # Cache the result in our database
-                anilist_object, _ = Media.objects.update_or_create(
+            anilist_raw_list = anilist_service.search_anime(query)
+            for media_data in anilist_raw_list:
+                media_obj, _ = Media.objects.update_or_create(
                     anilist_id=media_data['id'],
                     defaults={
                         'primary_title': media_data['title']['romaji'],
@@ -81,57 +79,62 @@ class MediaSearchView(APIView):
                         'cover_image_url': media_data['coverImage']['large'],
                     }
                 )
-
-                query_lower = query.lower()
-                romaji_lower = (media_data['title'].get('romaji') or '').lower()
-                english_lower = (media_data['title'].get('english') or '').lower()
-
-                if query_lower == romaji_lower or query_lower == english_lower:
-                    # If it's an exact match, this is the only result we need.
-                    serializer = MediaSerializer([anilist_object], many=True)
-                    return Response(serializer.data, status=status.HTTP_200_OK)
-                
-                # If not an exact match, add it to our list and search TMDB as well.
-                combined_results.append(anilist_object)
-
+                anilist_results.append(media_obj)
         except Exception as e:
-            print(f"AniList search failed for query '{query}': {e}")
+            print(f"AniList search failed: {e}")
 
-        # 2. If it wasn't an exact match on AniList, search TMDB.
+        # 2. Search TMDB and cache all results
         try:
-            # Search TMDB for Movies
-            movie_results = tmdb_service.search_movies(query)
-            if movie_results:
-                for movie in movie_results[:5]:
-                    if not movie.get('poster_path'): continue
-                    media_obj, _ = Media.objects.update_or_create(
-                        tmdb_id=movie['id'], media_type=Media.MOVIE,
-                        defaults={
-                            'primary_title': movie['title'], 'secondary_title': movie.get('original_title'),
-                            'cover_image_url': f"https://image.tmdb.org/t/p/w500{movie['poster_path']}", 'description': movie.get('overview'),
-                        }
-                    )
-                    combined_results.append(media_obj)
-
-            # Search TMDB for TV Shows
-            tv_show_results = tmdb_service.search_tv_shows(query)
-            if tv_show_results:
-                for show in tv_show_results[:5]:
-                    if not show.get('poster_path'): continue
-                    media_obj, _ = Media.objects.update_or_create(
-                        tmdb_id=show['id'], media_type=Media.TV_SHOW,
-                        defaults={
-                            'primary_title': show['name'], 'secondary_title': show.get('original_name'),
-                            'cover_image_url': f"https://image.tmdb.org/t/p/w500{show['poster_path']}", 'description': show.get('overview'),
-                        }
-                    )
-                    combined_results.append(media_obj)
-            
-            serializer = MediaSerializer(combined_results, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-
+            # Movies
+            movie_raw_results = tmdb_service.search_movies(query)
+            for movie in movie_raw_results[:5]:
+                if not movie.get('poster_path'): continue
+                media_obj, _ = Media.objects.update_or_create(
+                    tmdb_id=movie['id'], media_type=Media.MOVIE,
+                    defaults={'primary_title': movie['title'], 'secondary_title': movie.get('original_title'), 'cover_image_url': f"https://image.tmdb.org/t/p/w500{movie['poster_path']}", 'description': movie.get('overview')}
+                )
+                tmdb_results.append(media_obj)
+            # TV Shows
+            tv_show_raw_results = tmdb_service.search_tv_shows(query)
+            for show in tv_show_raw_results[:5]:
+                if not show.get('poster_path'): continue
+                media_obj, _ = Media.objects.update_or_create(
+                    tmdb_id=show['id'], media_type=Media.TV_SHOW,
+                    defaults={'primary_title': show['name'], 'secondary_title': show.get('original_name'), 'cover_image_url': f"https://image.tmdb.org/t/p/w500{show['poster_path']}", 'description': show.get('overview')}
+                )
+                tmdb_results.append(media_obj)
         except Exception as e:
-            return Response({"error": "An error occurred during TMDB search", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            print(f"TMDB search failed: {e}")
+
+        # 3. De-duplicate: If a TMDB result is very similar to an AniList result, remove it.
+        final_tmdb_results = []
+        for tmdb_item in tmdb_results:
+            is_duplicate = False
+            for anilist_item in anilist_results:
+                tmdb_title = tmdb_item.primary_title.lower()
+
+                # Check against the Romaji title from AniList
+                anilist_romaji = anilist_item.primary_title.lower()
+                similarity1 = SequenceMatcher(None, tmdb_title, anilist_romaji).ratio()
+
+                # Check against the English title from AniList (if it exists)
+                anilist_english = (anilist_item.secondary_title or "").lower()
+                similarity2 = 0
+                if anilist_english:
+                    similarity2 = SequenceMatcher(None, tmdb_title, anilist_english).ratio()
+
+                # If it's a close match to either title, mark as duplicate
+                if similarity1 > 0.85 or similarity2 > 0.85:
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                final_tmdb_results.append(tmdb_item)
+
+        # 4. Combine the lists and serialize
+        final_results = anilist_results + final_tmdb_results
+        serializer = MediaSerializer(final_results, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class UserMediaAddView(APIView):
     authentication_classes = [TokenAuthentication]

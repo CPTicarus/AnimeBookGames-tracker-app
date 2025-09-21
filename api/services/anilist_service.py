@@ -36,29 +36,31 @@ def get_viewer_profile(access_token):
 
 def search_anime(query_string):
     """
-    Searches for an anime on AniList.
-    Lets exceptions bubble up to be handled by the view.
+    Searches for anime on AniList and returns a list of potential matches.
     """
     query = gql('''
         query ($search: String) {
-            Media (search: $search, type: ANIME, sort: SEARCH_MATCH) {
-                id
-                title {
-                    romaji
-                    english
-                }
-                format
-                episodes
-                coverImage {
-                    large
+            Page(page: 1, perPage: 5) {
+                media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+                    id
+                    title {
+                        romaji
+                        english
+                    }
+                    coverImage {
+                        large
+                    }
                 }
             }
         }
     ''')
     params = {"search": query_string}
-
     result = client.execute(query, variable_values=params)
-    return result
+
+    # Return the list of media found inside the Page object
+    if result and result.get('Page'):
+        return result['Page'].get('media', [])
+    return []
 
 def exchange_code_for_token(auth_code):
     """

@@ -4,11 +4,11 @@ const theme = createTheme({
   palette: {
     mode: 'dark', // This enables dark mode
     primary: {
-      main: '#e8971fff', // A nice shade of orange
+      main: '#FFA726',
     },
     background: {
-      default: '#121212', // A standard dark background
-      paper: '#1E1E1E',   // The color for components like Cards
+      default: '#121212',
+      paper: '#1E1E1E',
     },
   },
 });

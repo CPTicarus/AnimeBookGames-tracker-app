@@ -1,7 +1,7 @@
 // src/App.tsx
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { setAuthToken } from './api'; // <-- Import our new helper
+import { setAuthToken } from './api';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import LibraryPage from './pages/LibraryPage';
