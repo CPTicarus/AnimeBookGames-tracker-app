@@ -61,81 +61,72 @@ class MediaSearchView(APIView):
     def get(self, request):
         query = request.query_params.get('q', None)
         if not query:
-            return Response({"error": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response([]) # Return empty list if no query
 
-        anilist_results = []
-        tmdb_results = []
+        results = []
+        # Fetch from AniList
+        anilist_data = anilist_service.search_anime(query)
+        for item in anilist_data:
+            results.append({
+                "api_source": "ANILIST", "api_id": item['id'],
+                "primary_title": item['title']['romaji'], "secondary_title": item['title']['english'],
+                "media_type": "ANIME", "cover_image_url": item['coverImage']['large']
+            })
 
-        # 1. Search AniList and cache all results
-        try:
-            anilist_raw_list = anilist_service.search_anime(query)
-            for media_data in anilist_raw_list:
-                media_obj, _ = Media.objects.update_or_create(
-                    anilist_id=media_data['id'],
-                    defaults={
-                        'primary_title': media_data['title']['romaji'],
-                        'secondary_title': media_data['title']['english'],
-                        'media_type': Media.ANIME,
-                        'cover_image_url': media_data['coverImage']['large'],
-                    }
-                )
-                anilist_results.append(media_obj)
-        except Exception as e:
-            print(f"AniList search failed: {e}")
+        # Fetch from TMDB Movies
+        movie_data = tmdb_service.search_movies(query)
+        for item in movie_data:
+            if not item.get('poster_path'): continue
+            results.append({
+                "api_source": "TMDB", "api_id": item['id'],
+                "primary_title": item['title'], "secondary_title": item.get('original_title'),
+                "media_type": "MOVIE", "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
+            })
 
-        # 2. Search TMDB and cache all results
-        try:
-            # Movies
-            movie_raw_results = tmdb_service.search_movies(query)
-            for movie in movie_raw_results[:5]:
-                if not movie.get('poster_path'): continue
-                media_obj, _ = Media.objects.update_or_create(
-                    tmdb_id=movie['id'], media_type=Media.MOVIE,
-                    defaults={'primary_title': movie['title'], 'secondary_title': movie.get('original_title'), 'cover_image_url': f"https://image.tmdb.org/t/p/w500{movie['poster_path']}", 'description': movie.get('overview')}
-                )
-                tmdb_results.append(media_obj)
-            # TV Shows
-            tv_show_raw_results = tmdb_service.search_tv_shows(query)
-            for show in tv_show_raw_results[:5]:
-                if not show.get('poster_path'): continue
-                media_obj, _ = Media.objects.update_or_create(
-                    tmdb_id=show['id'], media_type=Media.TV_SHOW,
-                    defaults={'primary_title': show['name'], 'secondary_title': show.get('original_name'), 'cover_image_url': f"https://image.tmdb.org/t/p/w500{show['poster_path']}", 'description': show.get('overview')}
-                )
-                tmdb_results.append(media_obj)
-        except Exception as e:
-            print(f"TMDB search failed: {e}")
+        # Fetch from TMDB TV Shows
+        tv_data = tmdb_service.search_tv_shows(query)
+        for item in tv_data:
+            if not item.get('poster_path'): continue
+            results.append({
+                "api_source": "TMDB", "api_id": item['id'],
+                "primary_title": item['name'], "secondary_title": item.get('original_name'),
+                "media_type": "TV_SHOW", "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
+            })
 
-        # 3. De-duplicate: If a TMDB result is very similar to an AniList result, remove it.
-        final_tmdb_results = []
-        for tmdb_item in tmdb_results:
-            is_duplicate = False
-            for anilist_item in anilist_results:
-                tmdb_title = tmdb_item.primary_title.lower()
+        return Response(results)
 
-                # Check against the Romaji title from AniList
-                anilist_romaji = anilist_item.primary_title.lower()
-                similarity1 = SequenceMatcher(None, tmdb_title, anilist_romaji).ratio()
+# This view is now responsible for ALL writing (caching and adding to list)
+class UserMediaAddView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
-                # Check against the English title from AniList (if it exists)
-                anilist_english = (anilist_item.secondary_title or "").lower()
-                similarity2 = 0
-                if anilist_english:
-                    similarity2 = SequenceMatcher(None, tmdb_title, anilist_english).ratio()
+    def post(self, request):
+        data = request.data
+        api_source = data.get('api_source')
+        api_id = data.get('api_id')
 
-                # If it's a close match to either title, mark as duplicate
-                if similarity1 > 0.85 or similarity2 > 0.85:
-                    is_duplicate = True
-                    break
+        if not api_source or not api_id:
+            return Response({"error": "api_source and api_id are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-            if not is_duplicate:
-                final_tmdb_results.append(tmdb_item)
+        # 1. Find or create the Media object (the caching step)
+        if api_source == 'ANILIST':
+            media_obj, _ = Media.objects.get_or_create(anilist_id=api_id, defaults=data)
+        elif api_source == 'TMDB':
+            media_obj, _ = Media.objects.get_or_create(tmdb_id=api_id, media_type=data.get('media_type'), defaults=data)
+        else:
+            return Response({"error": "Invalid api_source"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 4. Combine the lists and serialize
-        final_results = anilist_results + final_tmdb_results
-        serializer = MediaSerializer(final_results, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # 2. Add the Media object to the user's list
+        profile = request.user.profile
+        user_media_item, created = UserMedia.objects.get_or_create(
+            profile=profile, media=media_obj, defaults={'status': 'PLANNED'}
+        )
 
+        if created:
+            return Response({"success": f"'{media_obj.primary_title}' added to your list."}, status=status.HTTP_201_CREATED)
+        else:
+            return Response({"message": f"'{media_obj.primary_title}' is already in your list."}, status=status.HTTP_200_OK)
+        
 class UserMediaAddView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]

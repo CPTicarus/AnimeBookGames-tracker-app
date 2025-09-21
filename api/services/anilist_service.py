@@ -1,191 +1,113 @@
 from gql import gql, Client
 from gql.transport.requests import RequestsHTTPTransport
 import requests
-from django.conf import settings
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import os
 
-# Define the AniList API URL
 ANILIST_API_URL = "https://graphql.anilist.co"
 
-# Set up the transport
-transport = RequestsHTTPTransport(url=ANILIST_API_URL)
-
-# Create the GQL client
-client = Client(transport=transport, fetch_schema_from_transport=False)
-
-def get_viewer_profile(access_token):
+class ResilientRequestsHTTPTransport(RequestsHTTPTransport):
     """
-    Fetches the profile of the user corresponding to the access token.
+    A custom transport that initializes with a pre-configured,
+    resilient session for handling retries.
     """
-    authed_transport = RequestsHTTPTransport(
-        url=ANILIST_API_URL,
-        headers={'Authorization': f'Bearer {access_token}'}
-    )
-    authed_client = Client(transport=authed_transport, fetch_schema_from_transport=False)
-    
-    query = gql('''
-        query {
-            Viewer {
-                id
-                name
-            }
-        }
-    ''')
-    
-    result = authed_client.execute(query)
-    return result['Viewer']
+    def __init__(self, *args, **kwargs):
+        # Create the resilient session here
+        session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["POST", "GET"],
+            backoff_factor=1
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("https://", adapter)
+        
+        # Manually assign the session and initialize the parent class
+        self._session = session
+        super().__init__(*args, **kwargs)
 
 def search_anime(query_string):
-    """
-    Searches for anime on AniList and returns a list of potential matches.
-    """
+    transport = ResilientRequestsHTTPTransport(url=ANILIST_API_URL)
+    
+    client = Client(transport=transport, fetch_schema_from_transport=False)
+    
     query = gql('''
         query ($search: String) {
             Page(page: 1, perPage: 5) {
                 media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
-                    id
-                    title {
-                        romaji
-                        english
-                    }
-                    coverImage {
-                        large
-                    }
+                    id,
+                    title { romaji, english },
+                    coverImage { large }
                 }
             }
         }
     ''')
     params = {"search": query_string}
     result = client.execute(query, variable_values=params)
+    return result.get('Page', {}).get('media', [])
 
-    # Return the list of media found inside the Page object
-    if result and result.get('Page'):
-        return result['Page'].get('media', [])
-    return []
+def get_viewer_profile(access_token):
+    headers = {'Authorization': f'Bearer {access_token}'}
+
+    transport = ResilientRequestsHTTPTransport(url=ANILIST_API_URL, headers=headers)
+
+    client = Client(transport=transport, fetch_schema_from_transport=False)
+    
+    query = gql('query { Viewer { id, name } }')
+    result = client.execute(query)
+    return result['Viewer']
 
 def exchange_code_for_token(auth_code):
-    """
-    Exchanges the authorization code for an access token from AniList.
-    """
+    # This function uses requests directly and does not need to change,
+    # but for consistency, we can update it.
+    session = ResilientRequestsHTTPTransport(url="").session
     token_url = 'https://anilist.co/api/v2/oauth/token'
-    
     payload = {
         'grant_type': 'authorization_code',
-        'client_id': settings.ANILIST_CLIENT_ID,
-        'client_secret': settings.ANILIST_CLIENT_SECRET,
-        'redirect_uri': settings.ANILIST_REDIRECT_URI,
+        'client_id': os.getenv('ANILIST_CLIENT_ID'),
+        'client_secret': os.getenv('ANILIST_CLIENT_SECRET'),
+        'redirect_uri': os.getenv('ANILIST_REDIRECT_URI'),
         'code': auth_code,
     }
-    
-    response = requests.post(token_url, json=payload)
-    
-    # Raise an exception if the request was unsuccessful
+    response = session.post(token_url, json=payload)
     response.raise_for_status()
-    
     return response.json()
 
-def get_user_anime_list(access_token):
-    """
-    Fetches the logged-in user's anime list using their access token.
-    This version dynamically finds the username first.
-    """
-    authed_transport = RequestsHTTPTransport(
-        url=ANILIST_API_URL,
-        headers={'Authorization': f'Bearer {access_token}'}
-    )
-    authed_client = Client(transport=authed_transport, fetch_schema_from_transport=False)
-
-    # First, create a query to get the logged-in user's details
-    viewer_query = gql('''
-        query {
-            Viewer {
-                id
-                name
-            }
-        }
-    ''')
-
-    # Execute the query to get the user's name
-    viewer_result = authed_client.execute(viewer_query)
-    user_name = viewer_result['Viewer']['name']
-
-    # Now, create the second query to get the user's list using their name
-    list_query = gql('''
-        query ($userName: String) {
-            MediaListCollection(userName: $userName, type: ANIME) {
-                lists {
-                    name
-                    entries {
-                        media {
-                            id
-                            title {
-                                romaji
-                                english 
-                            }
-                        }
-                        score
-                        progress
-                    }
-                }
-            }
-        }
-    ''')
-
-    # Execute the second query with the user's name as a variable
-    params = {"userName": user_name}
-    list_result = authed_client.execute(list_query, variable_values=params)
-
-    return list_result
-
 def fetch_full_user_list(access_token):
-    """
-    Fetches all entries from a user's anime list, handling pagination.
-    """
-    authed_transport = RequestsHTTPTransport(
-        url=ANILIST_API_URL,
-        headers={'Authorization': f'Bearer {access_token}'}
-    )
-    authed_client = Client(transport=authed_transport, fetch_schema_from_transport=False)
+    headers = {'Authorization': f'Bearer {access_token}'}
 
+    transport = ResilientRequestsHTTPTransport(url=ANILIST_API_URL, headers=headers)
+
+    client = Client(transport=transport, fetch_schema_from_transport=False)
+    
     viewer_profile = get_viewer_profile(access_token)
     user_name = viewer_profile['name']
 
     query = gql('''
         query ($userName: String, $page: Int, $perPage: Int) {
             Page (page: $page, perPage: $perPage) {
-                pageInfo {
-                    hasNextPage
-                }
+                pageInfo { hasNextPage }
                 mediaList (userName: $userName, type: ANIME) {
-                    status
-                    score
-                    progress
-                    media {
-                        id
-                        title {
-                            romaji
-                            english
-                        }
-                        coverImage { large }
+                    status, score, progress,
+                    media { 
+                        id,
+                        title { romaji, english },
+                        coverImage { large } 
                     }
                 }
             }
         }
     ''')
-
     all_entries = []
     page = 1
-    per_page = 50 
-
     while True:
-        params = {"userName": user_name, "page": page, "perPage": per_page}
-        result = authed_client.execute(query, variable_values=params)
-
+        params = {"userName": user_name, "page": page, "perPage": 50}
+        result = client.execute(query, variable_values=params)
         page_data = result['Page']
         all_entries.extend(page_data['mediaList'])
-
         if not page_data['pageInfo']['hasNextPage']:
             break
-
         page += 1
-         
     return all_entries
