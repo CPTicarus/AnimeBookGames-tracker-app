@@ -212,13 +212,15 @@ class MediaSearchView(APIView):
                         for item in data:
                             volume_info = item.get('volumeInfo', {})
                             image_links = volume_info.get('imageLinks', {})
-                            if not image_links.get('thumbnail'): continue
+                            thumbnail_url = image_links.get('thumbnail')
+                            if not thumbnail_url:
+                                continue
                             results.append({
                                 "api_source": "GOOGLE", "api_id": item['id'],
                                 "primary_title": volume_info.get('title'),
                                 "secondary_title": ", ".join(volume_info.get('authors', [])),
                                 "media_type": "BOOK",
-                                "cover_image_url": image_links.get('thumbnail')
+                                "cover_image_url": thumbnail_url.replace('http://', 'https://')
                             })
                 except Exception as exc:
                     print(f'{source_type} search generated an exception: {exc}')
