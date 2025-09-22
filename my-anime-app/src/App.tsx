@@ -6,6 +6,7 @@ import RegisterPage from './pages/RegisterPage';
 import LibraryPage from './pages/LibraryPage';
 import ImportPage from './pages/ImportPage';
 import Layout from './components/Layout';
+import StatsPage from './pages/StatsPage';
 import './App.css';
 
 function App() {
@@ -87,6 +88,7 @@ function App() {
       >
         <Route path="/library" element={<LibraryPage token={appToken!} />} />
         <Route path="/import" element={<ImportPage token={appToken!} />} />
+        <Route path="/stats" element={<StatsPage />} /> 
       </Route>
     </Routes>
 

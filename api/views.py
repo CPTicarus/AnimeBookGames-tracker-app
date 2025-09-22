@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Count
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import JSONRenderer
@@ -11,12 +12,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
-from difflib import SequenceMatcher
 import concurrent.futures
 
 from .services import anilist_service, tmdb_service, rawg_service, google_books_service
 from .models import Media, Profile, UserMedia, TMDBRequestToken 
-from .serializers import MediaSerializer, UserMediaSerializer
+from .serializers import UserMediaSerializer
 
 
 def csrf_token_view(request):
@@ -54,6 +54,65 @@ class LoginView(APIView):
         else:
             return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
+class StatsView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        profile = request.user.profile
+        completed_list = UserMedia.objects.filter(profile=profile, status='COMPLETED')
+
+        overall_stats = {
+            'total_completed': completed_list.count(),
+        }
+
+        per_type_stats = {}
+        # --- THIS IS THE KEY CHANGE ---
+        # We initialize the dictionary using the constants from the Media model
+        # to guarantee the keys are correct.
+        time_spent_minutes = {
+            'OVERALL': 0,
+            Media.ANIME: 0,
+            Media.MOVIE: 0,
+            Media.TV_SHOW: 0, # Uses 'TV'
+            Media.MANGA: 0,
+            Media.BOOK: 0,
+            Media.GAME: 0,
+        }
+
+        for item in completed_list:
+            media_type = item.media.media_type
+            
+            if media_type not in per_type_stats:
+                per_type_stats[media_type] = {'total_completed': 0}
+            
+            per_type_stats[media_type]['total_completed'] += 1
+
+            if media_type == Media.ANIME:
+                time_spent_minutes[media_type] += item.progress * 25
+            elif media_type == Media.MOVIE:
+                time_spent_minutes[media_type] += item.progress * 120
+            elif media_type == Media.TV_SHOW: 
+                time_spent_minutes[media_type] += item.progress * 45
+            elif media_type == Media.GAME:
+                time_spent_minutes[media_type] += item.progress * 60
+            elif media_type == Media.BOOK:
+                time_spent_minutes[media_type] += item.progress * 360
+            elif media_type == Media.MANGA:
+                time_spent_minutes[media_type] += item.progress * 10
+                
+        time_spent_minutes['OVERALL'] = sum(time_spent_minutes.values())
+        time_spent_hours = {key: round(value / 60, 1) for key, value in time_spent_minutes.items()}
+
+        response_data = {
+            'overall': overall_stats,
+            'by_type': per_type_stats,
+            'time_spent_hours': time_spent_hours,
+        }
+        
+        return Response(response_data)
+
+#------------- media related stuff ------------
 class UserMediaUpdateView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -166,8 +225,6 @@ class MediaSearchView(APIView):
         
         return Response(results)
 
-# api/views.py
-
 class UserMediaAddView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -253,6 +310,7 @@ class UserMediaListView(APIView):
         user_media_list = UserMedia.objects.filter(profile=user_profile).order_by('-score')
         serializer = UserMediaSerializer(user_media_list, many=True)
         return Response(serializer.data)
+#----------------------------------------------
 
 #------------ for imorting lists --------------
 class AniListLoginView(APIView):

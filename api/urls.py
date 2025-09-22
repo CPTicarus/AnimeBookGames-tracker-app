@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import MediaSearchView, AniListLoginView, AniListCallbackView, UserMediaListView, csrf_token_view, RegisterView, LoginView, SyncAniListView, UserMediaAddView, UserMediaUpdateView, TMDBLoginView, TMDBCallbackView, SyncTMDBView, UserMediaDeleteView
+from .views import MediaSearchView, AniListLoginView, AniListCallbackView, UserMediaListView, csrf_token_view, RegisterView, LoginView, SyncAniListView, UserMediaAddView, UserMediaUpdateView, TMDBLoginView, TMDBCallbackView, SyncTMDBView, StatsView
 urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/local-login/', LoginView.as_view(), name='local-login'),
@@ -11,7 +11,7 @@ urlpatterns = [
     path('list/add/', UserMediaAddView.as_view(), name='user-media-add'), 
     path('list/update/<int:pk>/', UserMediaUpdateView.as_view(), name='user-media-update'),
     path('sync/tmdb/', SyncTMDBView.as_view(), name='sync-tmdb'),
-    path('list/delete/<int:pk>/', UserMediaDeleteView.as_view(), name='user-media-delete'),
+    path('stats/', StatsView.as_view(), name='stats'),
     
     #--------- import list urls ------------
     path('auth/tmdb/login/', TMDBLoginView.as_view(), name='tmdb-login'),
