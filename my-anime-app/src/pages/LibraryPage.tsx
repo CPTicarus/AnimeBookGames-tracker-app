@@ -14,6 +14,8 @@ import MovieIcon from '@mui/icons-material/Movie';
 import TvIcon from '@mui/icons-material/Tv';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import AnimationIcon from '@mui/icons-material/Animation';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
+import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 
 // Interfaces for our data
 interface Media { 
@@ -30,7 +32,7 @@ interface UserMedia { id: number; media: Omit<Media, 'media_type' | 'api_source'
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'COMPLETED': return '#4CAF50';
-    case 'WATCHING': return '#2196F3';
+    case 'IN_PROGRESS': return '#2196F3';
     case 'DROPPED': return '#F44336';
     case 'PAUSED': return '#FFC107';
     case 'PLANNED': return '#9E9E9E';
@@ -38,12 +40,16 @@ const getStatusColor = (status: string) => {
   }
 };
 
-function LibraryPage() {
+interface LibraryPageProps {
+  token: string;
+}
+
+function LibraryPage({ token }: LibraryPageProps) {
   // State for the user's library
   const [userMediaList, setUserMediaList] = useState<UserMedia[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
 
-  const [sources, setSources] = useState(() => ['ANIME', 'MOVIE', 'TV_SHOW', 'GAME']);
+  const [sources, setSources] = useState(() => ['ANIME', 'MOVIE', 'TV_SHOW']);
   // State for the Autocomplete search
   const [options, setOptions] = useState<readonly Media[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -65,6 +71,18 @@ function LibraryPage() {
       console.error("Failed to fetch user list", err);
     } finally {
       setLibraryLoading(false);
+    }
+  };
+
+  const handleAddNewItem = async (itemData: { media: Media, status: string, score: number | null, progress: number }) => {
+    try {
+      const response = await api.post('/api/list/add/', itemData);
+      setMessage(response.data.success || response.data.message);
+      if (response.status === 201) {
+        fetchLibrary(); // Refresh the library list to show the new item
+      }
+    } catch (error: any) {
+      setMessage(error.response?.data?.error || 'Failed to add item.');
     }
   };
 
@@ -102,7 +120,7 @@ function LibraryPage() {
 
   useEffect(() => {
     fetchLibrary();
-  }, []);
+  }, [token]);
 
   const handleOpenModal = (item: UserMedia) => {
     setEditingItem(item);
@@ -119,16 +137,28 @@ function LibraryPage() {
 
   const handleSaveChanges = async () => {
     if (!editingItem) return;
-    try {
-      await api.patch(`/api/list/update/${editingItem.id}/`, {
+
+    if (editingItem.id) { // If it has an ID, it's an existing item, so we UPDATE
+      try {
+        await api.patch(`/api/list/update/${editingItem.id}/`, {
+          status: editingItem.status,
+          score: editingItem.score,
+          progress: editingItem.progress,
+        });
+        handleCloseModal();
+        fetchLibrary();
+      } catch (err) {
+        console.error("Failed to update item", err);
+      }
+    } else { // If it has no ID, it's a NEW item from search, so we ADD
+      const newItemData = {
+        media: editingItem.media,
         status: editingItem.status,
         score: editingItem.score,
         progress: editingItem.progress,
-      });
+      }
+      await handleAddNewItem(newItemData as any);
       handleCloseModal();
-      fetchLibrary(); // Refresh the library to show changes
-    } catch (err) {
-      console.error("Failed to update item", err);
     }
   };
 
@@ -141,7 +171,7 @@ function LibraryPage() {
     return acc;
   }, {} as Record<string, UserMedia[]>);
 
-  const statusOrder = ['WATCHING', 'COMPLETED', 'PAUSED', 'PLANNED', 'DROPPED'];
+  const statusOrder = ['IN_PROGRESS', 'COMPLETED', 'PAUSED', 'PLANNED', 'DROPPED'];
   const sortedGroupKeys = Object.keys(groupedMedia).sort((a, b) => {
     const indexA = statusOrder.indexOf(a);
     const indexB = statusOrder.indexOf(b);
@@ -174,6 +204,9 @@ function LibraryPage() {
         <ToggleButton value="ANIME" aria-label="anime">
           <AnimationIcon sx={{ mr: 1 }} /> Anime
         </ToggleButton>
+        <ToggleButton value="MANGA" aria-label="manga">
+          <AutoStoriesIcon sx={{ mr: 1 }} /> Manga
+        </ToggleButton>
         <ToggleButton value="MOVIE" aria-label="movies">
           <MovieIcon sx={{ mr: 1 }} /> Movies
         </ToggleButton>
@@ -182,6 +215,9 @@ function LibraryPage() {
         </ToggleButton>
         <ToggleButton value="GAME" aria-label="games">
           <SportsEsportsIcon sx={{ mr: 1 }} /> Games
+        </ToggleButton>
+        <ToggleButton value="BOOK" aria-label="books">
+          <MenuBookIcon sx={{ mr: 1 }} /> Books
         </ToggleButton>
       </ToggleButtonGroup>
       <Autocomplete
@@ -198,9 +234,17 @@ function LibraryPage() {
         )}
         onChange={(_event, value) => {
           if (value) {
-            handleAddItem(value);
-            setInputValue('');
-            setOptions([]);
+            // Create a temporary item and open the modal
+            const newItem: UserMedia = {
+              id: 0, // Use 0 or another indicator that it's a new item
+              media: value,
+              status: 'PLANNED', // Default status
+              score: null,
+              progress: 0,
+            };
+            handleOpenModal(newItem);
+            setInputValue(''); 
+            setOptions([]); 
           }
         }}
         onInputChange={(_event, newInputValue) => {
@@ -332,7 +376,7 @@ function LibraryPage() {
                   label="Status"
                   onChange={handleFormChange}
                 >
-                  <MenuItem value="WATCHING">Watching</MenuItem>
+                  <MenuItem value="IN_PROGRESS">In Progress</MenuItem> 
                   <MenuItem value="COMPLETED">Completed</MenuItem>
                   <MenuItem value="PAUSED">Paused</MenuItem>
                   <MenuItem value="DROPPED">Dropped</MenuItem>

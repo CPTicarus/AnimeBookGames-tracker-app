@@ -54,13 +54,13 @@ class Media(models.Model):
     
 class UserMedia(models.Model):
     # Define constants for the user's status
-    WATCHING = 'WATCHING'
+    IN_PROGRESS = 'IN_PROGRESS'
     COMPLETED = 'COMPLETED'
     PAUSED = 'PAUSED'
     DROPPED = 'DROPPED'
     PLANNED = 'PLANNED'
     STATUS_CHOICES = [
-        (WATCHING, 'Watching'),
+        (IN_PROGRESS, 'In Progress'),
         (COMPLETED, 'Completed'),
         (PAUSED, 'Paused'),
         (DROPPED, 'Dropped'),
@@ -70,7 +70,7 @@ class UserMedia(models.Model):
     profile = models.ForeignKey(Profile, on_delete=models.CASCADE)
     media = models.ForeignKey(Media, on_delete=models.CASCADE)
     
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, blank=True, null=True)
+    status = models.CharField(max_length=11, choices=STATUS_CHOICES, blank=True, null=True)
     score = models.FloatField(blank=True, null=True)
     progress = models.IntegerField(default=0) 
     

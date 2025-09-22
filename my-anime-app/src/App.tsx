@@ -1,4 +1,3 @@
-// src/App.tsx
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { setAuthToken } from './api';
@@ -10,56 +9,87 @@ import Layout from './components/Layout';
 import './App.css';
 
 function App() {
-  const [appToken, setAppToken] = useState<string | null>(null);
+  console.log('--- App Component Render ---');
+
+  const [appToken, setAppToken] = useState<string | null>(() => {
+    const storedToken = localStorage.getItem('app-token');
+    console.log('useState Initializer: Token from localStorage is:', storedToken);
+    return storedToken;
+  });
+
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // When the app starts, check for a token in storage
+    console.log('useEffect runs ONCE on mount.');
     const token = localStorage.getItem('app-token');
+    console.log('useEffect: Token from localStorage on mount is:', token);
+    
     if (token) {
-      setAuthToken(token); // Set the token on our api instance
-      setAppToken(token);
+      console.log('useEffect: Setting auth token for API helper.');
+      setAuthToken(token);
     }
-    setIsLoading(false); // We're done checking
+    setIsLoading(false);
 
-    // Set up the listener for new AniList logins
     window.electronAPI.onLoginSuccess((_event, newToken) => {
-      // This part is for after the AniList link, to refresh the user's data
-      // For now, we just log it. A full implementation would maybe refresh the profile.
-      console.log('AniList flow successful, received a DRF token:', newToken);
+      console.log('onLoginSuccess event triggered. New token received.');
+      handleLogin(newToken);
     });
-
   }, []);
 
   const handleLogin = (token: string) => {
+    console.log('handleLogin called. SAVING token to localStorage:', token);
     localStorage.setItem('app-token', token);
-    setAuthToken(token); // Set the token on our api instance
+    setAuthToken(token);
     setAppToken(token);
     navigate('/library');
   };
 
   const handleLogout = () => {
+    console.log('handleLogout called. REMOVING token from localStorage.');
     localStorage.removeItem('app-token');
-    setAuthToken(null); // Clear the token from our api instance
+    setAuthToken(null);
     setAppToken(null);
     navigate('/');
   };
 
+  console.log('Rendering with appToken state:', appToken);
+
   if (isLoading) {
-    return <div>Loading...</div>; // Show a loading screen while we check for a token
+    return <div>Loading...</div>;
   }
 
   return (
     <Routes>
-      <Route path="/" element={<LoginPage onLogin={handleLogin} />} />
-      <Route path="/register" element={<RegisterPage onLogin={handleLogin} />} />
+      {/* If logged in → go to library, else show login */}
+      <Route
+        path="/"
+        element={
+          appToken
+            ? <Navigate to="/library" replace />
+            : <LoginPage onLogin={handleLogin} />
+        }
+      />
 
-      <Route element={appToken ? <Layout onLogout={handleLogout} /> : <Navigate to="/" />}>
-      <Route path="/library" element={<LibraryPage  />} />
-      <Route path="/import" element={<ImportPage token={appToken!} />} />
+      {/* If logged in → go to library, else show register */}
+      <Route
+        path="/register"
+        element={
+          appToken
+            ? <Navigate to="/library" replace />
+            : <RegisterPage onLogin={handleLogin} />
+        }
+      />
+
+      {/* Protected routes wrapped in Layout */}
+      <Route
+        element={appToken ? <Layout onLogout={handleLogout} /> : <Navigate to="/" replace />}
+      >
+        <Route path="/library" element={<LibraryPage token={appToken!} />} />
+        <Route path="/import" element={<ImportPage token={appToken!} />} />
       </Route>
     </Routes>
+
   );
 }
 

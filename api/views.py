@@ -166,46 +166,55 @@ class MediaSearchView(APIView):
         
         return Response(results)
 
+# api/views.py
+
 class UserMediaAddView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         data = request.data
-        api_source = data.get('api_source')
-        api_id = data.get('api_id')
+        media_data = data.get('media') # The full media object will be nested
+        if not media_data:
+            return Response({"error": "media object is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        api_source = media_data.get('api_source')
+        api_id = media_data.get('api_id')
 
         if not api_source or not api_id:
             return Response({"error": "api_source and api_id are required"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
+            # Create/update the main Media entry
             defaults = {
-                'primary_title': data.get('primary_title'), 'secondary_title': data.get('secondary_title'),
-                'cover_image_url': data.get('cover_image_url'), 'description': data.get('description'),
+                'primary_title': media_data.get('primary_title'), 
+                'secondary_title': media_data.get('secondary_title'),
+                'cover_image_url': media_data.get('cover_image_url'), 
+                'description': media_data.get('description'),
             }
-            
             if api_source == 'ANILIST':
-                media_obj, _ = Media.objects.update_or_create(
-                    anilist_id=api_id, defaults=defaults, media_type=data.get('media_type')
-                )
+                media_obj, _ = Media.objects.update_or_create(anilist_id=api_id, media_type=media_data.get('media_type'), defaults=defaults)
             elif api_source == 'TMDB':
-                media_obj, _ = Media.objects.update_or_create(
-                    tmdb_id=api_id, media_type=data.get('media_type'), defaults=defaults
-                )
+                media_obj, _ = Media.objects.update_or_create(tmdb_id=api_id, media_type=media_data.get('media_type'), defaults=defaults)
             elif api_source == 'RAWG':
-                media_obj, _ = Media.objects.update_or_create(
-                    rawg_id=api_id, media_type=Media.GAME, defaults=defaults
-                )
+                media_obj, _ = Media.objects.update_or_create(rawg_id=api_id, media_type=media_data.get('media_type'), defaults=defaults)
             elif api_source == 'GOOGLE':
-                media_obj, _ = Media.objects.update_or_create(
-                    google_book_id=api_id, media_type=Media.BOOK, defaults=defaults
-                )
+                 media_obj, _ = Media.objects.update_or_create(google_book_id=api_id, media_type=media_data.get('media_type'), defaults=defaults)
             else:
                 return Response({"error": "Invalid api_source"}, status=status.HTTP_400_BAD_REQUEST)
 
+
+            user_media_defaults = {
+                'status': data.get('status', 'PLANNED'),
+                'score': data.get('score'),
+                'progress': data.get('progress', 0)
+            }
+
             profile = request.user.profile
             user_media_item, created = UserMedia.objects.get_or_create(
-                profile=profile, media=media_obj, defaults={'status': 'PLANNED'}
+                profile=profile, 
+                media=media_obj, 
+                defaults=user_media_defaults
             )
 
             if created:
@@ -214,6 +223,25 @@ class UserMediaAddView(APIView):
                 return Response({"message": f"'{media_obj.primary_title}' is already in your list."}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": "An error occurred.", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class UserMediaDeleteView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            # Find the specific item in the user's list.
+            # This check ensures a user can ONLY delete items from their own list.
+            user_media_item = UserMedia.objects.get(pk=pk, profile=request.user.profile)
+            
+            # Delete the item from the database
+            user_media_item.delete()
+            
+            # Return a success response with no content, which is standard for DELETE
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except UserMedia.DoesNotExist:
+            return Response({"error": "Item not found in your list."}, status=status.HTTP_404_NOT_FOUND)
         
 class UserMediaListView(APIView):
     # Tell this view to use TokenAuthentication instead of SessionAuthentication
@@ -354,7 +382,7 @@ class SyncAniListView(APIView):
 
             # The rest of the logic is the same, but now processes both
             status_map = { 
-                            'CURRENT': 'WATCHING',
+                            'CURRENT': 'IN_PROGRESS',
                             'PLANNING': 'PLANNED',
                             'COMPLETED': 'COMPLETED',
                             'DROPPED': 'DROPPED',
