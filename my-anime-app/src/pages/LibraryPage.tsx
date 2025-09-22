@@ -3,11 +3,12 @@ import api from '../api';
 import debounce from 'lodash.debounce';
 
 import { 
-  Autocomplete, TextField, Card,
-  CardMedia, Stack, Typography, Box, Accordion, AccordionSummary, AccordionDetails
+  Autocomplete, TextField, Card, CardMedia, Stack, Typography, Box, Accordion, AccordionSummary, AccordionDetails,
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, Select, MenuItem, FormControl, InputLabel
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
+// Interfaces for our data
 interface Media { 
   id: number;
   api_source: string;
@@ -17,7 +18,7 @@ interface Media {
   cover_image_url: string | null;
   media_type: string;
 }
-interface UserMedia { id: number; media: Omit<Media, 'media_type'>; status: string; progress: number; score: number | null; }
+interface UserMedia { id: number; media: Omit<Media, 'media_type' | 'api_source' | 'api_id'>; status: string; progress: number; score: number | null; }
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -36,9 +37,11 @@ function LibraryPage() {
   const [libraryLoading, setLibraryLoading] = useState(true);
 
   // State for the Autocomplete search
-  const [options, setOptions] = useState<readonly Media[]>([]); // Options for the dropdown
+  const [options, setOptions] = useState<readonly Media[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [editingItem, setEditingItem] = useState<UserMedia | null>(null);
+
 
   const fetchLibrary = async () => {
     setLibraryLoading(true);
@@ -57,31 +60,59 @@ function LibraryPage() {
       const response = await api.post('/api/list/add/', mediaObject);
       setMessage(response.data.success || response.data.message);
       if (response.status === 201) {
-        fetchLibrary();
+        fetchLibrary(); // Refresh the library list to show the new item
       }
     } catch (error: any) {
       setMessage(error.response?.data?.error || 'Failed to add item.');
     }
   };
 
-  // Debounced search function
   const debouncedSearch = useMemo(
-    () => debounce((query: string) => {
-      if (query.trim()) {
-        setSearchLoading(true);
-        api.get<Media[]>(`/api/search/?q=${query}`)
-          .then((response) => setOptions(response.data))
-          .finally(() => setSearchLoading(false));
-      } else {
-        setOptions([]);
+    () => debounce((query: string, callback: (options: Media[]) => void) => {
+      if (query.trim() === '') {
+        callback([]);
+        return;
       }
+      api.get<Media[]>(`/api/search/?q=${query}`).then(response => {
+        callback(response.data);
+      });
     }, 500),
     []
   );
-  
+
   useEffect(() => {
     fetchLibrary();
   }, []);
+
+  const handleOpenModal = (item: UserMedia) => {
+    setEditingItem(item);
+  };
+
+  const handleCloseModal = () => {
+    setEditingItem(null);
+  };
+
+  const handleFormChange = (event: any) => {
+    if (!editingItem) return;
+    setEditingItem({ ...editingItem, [event.target.name]: event.target.value });
+  };
+
+  const handleSaveChanges = async () => {
+    if (!editingItem) return;
+    try {
+      await api.patch(`/api/list/update/${editingItem.id}/`, {
+        status: editingItem.status,
+        score: editingItem.score,
+        progress: editingItem.progress,
+      });
+      handleCloseModal();
+      fetchLibrary(); // Refresh the library to show changes
+    } catch (err) {
+      console.error("Failed to update item", err);
+    }
+  };
+
+  const [inputValue, setInputValue] = useState('');
 
   const groupedMedia = userMediaList.reduce((acc, item) => {
     const status = item.status || 'UNKNOWN';
@@ -98,17 +129,16 @@ function LibraryPage() {
     if (indexB === -1) return -1;
     return indexA - indexB;
   });
-  
+
   return (
     <div>
-      {/* --- NEW AUTOCOMPLETE SEARCH BAR --- */}
       <Autocomplete
         options={options}
         // Tell TypeScript how to get the text label for each option
         getOptionLabel={(option) => option.secondary_title || option.primary_title}
         // Custom rendering for each option in the dropdown
         renderOption={(props, option) => (
-          <Box component="li" sx={{ '& > img': { mr: 2, flexShrink: 0 } }} {...props}>
+          <Box component="li" sx={{ '& > img': { mr: 2, flexShrink: 0 } }} {...props} key={option.id}>
             <img loading="lazy" width="40" src={option.cover_image_url || ''} alt="" />
             {option.secondary_title || option.primary_title} ({option.media_type})
           </Box>
@@ -116,13 +146,21 @@ function LibraryPage() {
         // When the user selects an option
         onChange={(_event, value) => {
           if (value) {
-            handleAddItem(value); 
+            handleAddItem(value);
+            setInputValue(''); // Clear the input field after adding
+            setOptions([]); // Clear the options dropdown
           }
         }}
         // When the user types in the box
         onInputChange={(_event, newInputValue) => {
-          debouncedSearch(newInputValue);
+          setInputValue(newInputValue);
+          setSearchLoading(true);
+          debouncedSearch(newInputValue, (options) => {
+            setSearchLoading(false);
+            setOptions(options);
+          });
         }}
+        inputValue={inputValue}
         loading={searchLoading}
         // This makes the input box look nice
         renderInput={(params) => (
@@ -144,7 +182,6 @@ function LibraryPage() {
 
       {message && <Typography sx={{ my: 2, color: 'primary.main' }}>{message}</Typography>}
 
-      {/* --- The Library Accordion View --- */}
       <h1 style={{ marginTop: '32px' }}>Your Media List</h1>
       {libraryLoading ? <p>Loading library...</p> : (
         <Box>
@@ -156,7 +193,22 @@ function LibraryPage() {
               <AccordionDetails>
                 <Stack spacing={2}>
                   {groupedMedia[status].map((item) => (
-                    <Card key={item.id} sx={{ display: 'flex', alignItems: 'center', padding: 1, '&:hover': { outline: '2px solid', outlineColor: 'primary.main' }}}>
+                    <Card 
+                      key={item.id} 
+                      onClick={() => handleOpenModal(item)}
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        padding: 1, 
+                        transition: 'all 0.2s ease-in-out',
+                        '&:hover': {
+                          cursor: 'pointer',
+                          transform: 'scale(1.02)', // A nice grow effect
+                          outline: '2px solid',
+                          outlineColor: 'primary.main',
+                        },
+                      }}
+                    >
                       <Box sx={{ width: 12, height: 12, backgroundColor: getStatusColor(item.status), borderRadius: '50%', flexShrink: 0, margin: '0 12px' }} />
                       <CardMedia component="img" sx={{ width: 60, height: 90, borderRadius: 1, flexShrink: 0 }} image={item.media.cover_image_url || ''} />
                       <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1, marginLeft: 2 }}>
@@ -170,6 +222,49 @@ function LibraryPage() {
                       </Box>
                     </Card>
                   ))}
+                  {editingItem && (
+                    <Dialog open={!!editingItem} onClose={handleCloseModal} fullWidth maxWidth="xs">
+                      <DialogTitle>Edit: {editingItem.media.secondary_title || editingItem.media.primary_title}</DialogTitle>
+                      <DialogContent>
+                        <Stack spacing={3} sx={{ marginTop: 2 }}>
+                          <FormControl fullWidth>
+                            <InputLabel>Status</InputLabel>
+                            <Select
+                              name="status"
+                              value={editingItem.status || ''}
+                              label="Status"
+                              onChange={handleFormChange}
+                            >
+                              <MenuItem value="WATCHING">Watching</MenuItem>
+                              <MenuItem value="COMPLETED">Completed</MenuItem>
+                              <MenuItem value="PAUSED">Paused</MenuItem>
+                              <MenuItem value="DROPPED">Dropped</MenuItem>
+                              <MenuItem value="PLANNED">Planned</MenuItem>
+                            </Select>
+                          </FormControl>
+                          <TextField
+                            name="score"
+                            label="Score (e.g., 8.5)"
+                            type="number"
+                            value={editingItem.score || ''}
+                            onChange={handleFormChange}
+                            inputProps={{ step: "0.1" }}
+                          />
+                          <TextField
+                            name="progress"
+                            label="Progress (e.g., episodes)"
+                            type="number"
+                            value={editingItem.progress || ''}
+                            onChange={handleFormChange}
+                          />
+                        </Stack>
+                      </DialogContent>
+                      <DialogActions>
+                        <Button onClick={handleCloseModal}>Cancel</Button>
+                        <Button onClick={handleSaveChanges} variant="contained">Save</Button>
+                      </DialogActions>
+                    </Dialog>
+                  )}
                 </Stack>
               </AccordionDetails>
             </Accordion>

@@ -6,6 +6,9 @@ class Profile(models.Model):
 
     anilist_username = models.CharField(max_length=100, blank=True, null=True)
     anilist_access_token = models.CharField(max_length=255, blank=True, null=True)
+    
+    tmdb_account_id = models.CharField(max_length=100, blank=True, null=True)
+    tmdb_session_id = models.CharField(max_length=255, blank=True, null=True)
 
     def __str__(self):
         return self.user.username
@@ -74,3 +77,8 @@ class UserMedia(models.Model):
 
     def __str__(self):
         return f"{self.profile.user.username}'s entry for {self.media.title}"
+    
+class TMDBRequestToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    token = models.CharField(max_length=255, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)

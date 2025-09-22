@@ -9,10 +9,6 @@ import ImportPage from './pages/ImportPage';
 import Layout from './components/Layout';
 import './App.css';
 
-declare global {
-  interface Window { electronAPI: { openLoginWindow: (url: string) => void; onLoginSuccess: (callback: (event: any, token: string) => void) => void; }; }
-}
-
 function App() {
   const [appToken, setAppToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,8 +56,8 @@ function App() {
       <Route path="/register" element={<RegisterPage onLogin={handleLogin} />} />
 
       <Route element={appToken ? <Layout onLogout={handleLogout} /> : <Navigate to="/" />}>
-        <Route path="/library" element={<LibraryPage />} />
-        <Route path="/import" element={<ImportPage />} />
+      <Route path="/library" element={<LibraryPage  />} />
+      <Route path="/import" element={<ImportPage token={appToken!} />} />
       </Route>
     </Routes>
   );

@@ -21,6 +21,9 @@ ANILIST_CLIENT_ID = os.getenv('ANILIST_CLIENT_ID')
 ANILIST_CLIENT_SECRET = os.getenv('ANILIST_CLIENT_SECRET')
 ANILIST_REDIRECT_URI = 'http://127.0.0.1:8000/api/auth/callback/'
 
+TMDB_API_KEY = os.getenv('TMDB_API_KEY')
+TMDB_REDIRECT_URI = 'http://127.0.0.1:8000/api/auth/tmdb/callback/'
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 

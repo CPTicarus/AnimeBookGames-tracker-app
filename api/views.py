@@ -12,9 +12,10 @@ from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
 from difflib import SequenceMatcher
+import concurrent.futures
 
 from .services import anilist_service, tmdb_service
-from .models import Media, Profile, UserMedia
+from .models import Media, Profile, UserMedia, TMDBRequestToken 
 from .serializers import MediaSerializer, UserMediaSerializer
 
 
@@ -41,7 +42,6 @@ class RegisterView(APIView):
         except Exception as e:
             return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
 
-# ADD THIS NEW VIEW FOR LOCAL LOGIN
 class LoginView(APIView):
     def post(self, request):
         username = request.data.get('username')
@@ -54,48 +54,76 @@ class LoginView(APIView):
         else:
             return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-class MediaSearchView(APIView):
+class UserMediaUpdateView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            # Find the specific item in the user's list
+            user_media_item = UserMedia.objects.get(pk=pk, profile=request.user.profile)
+        except UserMedia.DoesNotExist:
+            return Response({"error": "Item not found in your list."}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+
+        # Update fields if they are provided in the request
+        if 'status' in data:
+            user_media_item.status = data['status']
+        if 'score' in data:
+            # Allow clearing the score
+            score = data['score']
+            user_media_item.score = float(score) if score is not None and score != '' else None
+        if 'progress' in data:
+            user_media_item.progress = int(data['progress']) if data['progress'] is not None and data['progress'] != '' else 0
+
+        user_media_item.save()
+
+        # Return the updated item
+        serializer = UserMediaSerializer(user_media_item)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class MediaSearchView(APIView): 
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         query = request.query_params.get('q', None)
         if not query:
-            return Response([]) # Return empty list if no query
+            return Response([])
 
         results = []
-        # Fetch from AniList
-        anilist_data = anilist_service.search_anime(query)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            anilist_future = executor.submit(anilist_service.search_anime, query)
+            movies_future = executor.submit(tmdb_service.search_movies, query)
+            tv_shows_future = executor.submit(tmdb_service.search_tv_shows, query)
+
+            anilist_data = anilist_future.result()
+            movie_data = movies_future.result()
+            tv_data = tv_shows_future.result()
+
         for item in anilist_data:
             results.append({
-                "api_source": "ANILIST", "api_id": item['id'],
-                "primary_title": item['title']['romaji'], "secondary_title": item['title']['english'],
-                "media_type": "ANIME", "cover_image_url": item['coverImage']['large']
+                "api_source": "ANILIST", "api_id": item['id'], "primary_title": item['title']['romaji'],
+                "secondary_title": item['title']['english'], "media_type": "ANIME",
+                "cover_image_url": item['coverImage']['large']
             })
-
-        # Fetch from TMDB Movies
-        movie_data = tmdb_service.search_movies(query)
         for item in movie_data:
             if not item.get('poster_path'): continue
             results.append({
-                "api_source": "TMDB", "api_id": item['id'],
-                "primary_title": item['title'], "secondary_title": item.get('original_title'),
-                "media_type": "MOVIE", "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
+                "api_source": "TMDB", "api_id": item['id'], "primary_title": item['title'],
+                "secondary_title": item.get('original_title'), "media_type": "MOVIE",
+                "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
             })
-
-        # Fetch from TMDB TV Shows
-        tv_data = tmdb_service.search_tv_shows(query)
         for item in tv_data:
             if not item.get('poster_path'): continue
             results.append({
-                "api_source": "TMDB", "api_id": item['id'],
-                "primary_title": item['name'], "secondary_title": item.get('original_name'),
-                "media_type": "TV_SHOW", "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
+                "api_source": "TMDB", "api_id": item['id'], "primary_title": item['name'],
+                "secondary_title": item.get('original_name'), "media_type": "TV_SHOW",
+                "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
             })
-
         return Response(results)
 
-# This view is now responsible for ALL writing (caching and adding to list)
 class UserMediaAddView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -107,56 +135,29 @@ class UserMediaAddView(APIView):
 
         if not api_source or not api_id:
             return Response({"error": "api_source and api_id are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 1. Find or create the Media object (the caching step)
-        if api_source == 'ANILIST':
-            media_obj, _ = Media.objects.get_or_create(anilist_id=api_id, defaults=data)
-        elif api_source == 'TMDB':
-            media_obj, _ = Media.objects.get_or_create(tmdb_id=api_id, media_type=data.get('media_type'), defaults=data)
-        else:
-            return Response({"error": "Invalid api_source"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 2. Add the Media object to the user's list
-        profile = request.user.profile
-        user_media_item, created = UserMedia.objects.get_or_create(
-            profile=profile, media=media_obj, defaults={'status': 'PLANNED'}
-        )
-
-        if created:
-            return Response({"success": f"'{media_obj.primary_title}' added to your list."}, status=status.HTTP_201_CREATED)
-        else:
-            return Response({"message": f"'{media_obj.primary_title}' is already in your list."}, status=status.HTTP_200_OK)
         
-class UserMediaAddView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        media_id = request.data.get('media_id')
-        if not media_id:
-            return Response({"error": "media_id is required"}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
-            media_item = Media.objects.get(id=media_id)
-            profile = request.user.profile
+            defaults = {
+                'primary_title': data.get('primary_title'), 'secondary_title': data.get('secondary_title'),
+                'cover_image_url': data.get('cover_image_url'), 'description': data.get('description'),
+            }
+            if api_source == 'ANILIST':
+                media_obj, _ = Media.objects.update_or_create(anilist_id=api_id, media_type=Media.ANIME, defaults=defaults)
+            elif api_source == 'TMDB':
+                media_obj, _ = Media.objects.update_or_create(tmdb_id=api_id, media_type=data.get('media_type'), defaults=defaults)
+            else:
+                return Response({"error": "Invalid api_source"}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Use get_or_create to avoid adding duplicates
-            user_media_item, created = UserMedia.objects.get_or_create(
-                profile=profile,
-                media=media_item,
-                defaults={'status': 'PLANNED'} # Default to 'Planned' status
-            )
+            profile = request.user.profile
+            user_media_item, created = UserMedia.objects.get_or_create(profile=profile, media=media_obj, defaults={'status': 'PLANNED'})
 
             if created:
-                return Response({"success": f"'{media_item.primary_title}' added to your list."}, status=status.HTTP_201_CREATED)
+                return Response({"success": f"'{media_obj.primary_title}' added to your list."}, status=status.HTTP_201_CREATED)
             else:
-                return Response({"message": f"'{media_item.primary_title}' is already in your list."}, status=status.HTTP_200_OK)
-
-        except Media.DoesNotExist:
-            return Response({"error": "Media not found."}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"message": f"'{media_obj.primary_title}' is already in your list."}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": "An error occurred.", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+
 class UserMediaListView(APIView):
     # Tell this view to use TokenAuthentication instead of SessionAuthentication
     authentication_classes = [TokenAuthentication]
@@ -168,6 +169,7 @@ class UserMediaListView(APIView):
         serializer = UserMediaSerializer(user_media_list, many=True)
         return Response(serializer.data)
 
+#------------ for imorting lists --------------
 class AniListLoginView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -229,6 +231,51 @@ class AniListCallbackView(APIView):
         except Exception as e:
             return Response({"error": "Authentication failed", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class TMDBLoginView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            request_token = tmdb_service.create_request_token()
+
+            TMDBRequestToken.objects.create(user=request.user, token=request_token)
+
+            auth_url = f"https://www.themoviedb.org/authenticate/{request_token}?redirect_to={settings.TMDB_REDIRECT_URI}"
+
+            return Response({"auth_url": auth_url})
+        except Exception as e:
+            # THIS WILL PRINT THE REAL ERROR TO YOUR DJANGO TERMINAL
+            print("!!! TMDB AUTH FAILED:", e) 
+            return Response({"error": "Failed to initiate TMDB auth", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class TMDBCallbackView(APIView):
+    def get(self, request):
+        approved_token = request.query_params.get('request_token')
+        if not approved_token:
+            return Response({"error": "Request token not found in callback."})
+
+        try:
+            # Find the user by looking up the token in our database
+            token_entry = TMDBRequestToken.objects.get(token=approved_token)
+            user = token_entry.user
+            profile = user.profile
+
+            session_id = tmdb_service.create_session_id(approved_token)
+
+            profile.tmdb_session_id = session_id
+            profile.save()
+
+            # Clean up the temporary token from the database
+            token_entry.delete()
+
+            return Response({"success": "TMDB account successfully linked!"})
+        except TMDBRequestToken.DoesNotExist:
+            return Response({"error": "Invalid or expired request token. Please try again."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": "Failed to create TMDB session", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#-------------------------------------------------
+
 class SyncAniListView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -273,3 +320,14 @@ class SyncAniListView(APIView):
 
         except Exception as e:
             return Response({"error": "An error occurred during sync", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class SyncTMDBView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    def post(self, request):
+        # The logic here will be very similar to SyncAniListView.
+        # 1. Get the user's profile and their tmdb_session_id.
+        # 2. Call new functions in tmdb_service to get their watchlist and ratings.
+        # 3. Loop through the results, update_or_create Media and UserMedia entries.
+        # 4. Return a success message.
+        return Response({"success": "TMDB Sync functionality to be implemented."})

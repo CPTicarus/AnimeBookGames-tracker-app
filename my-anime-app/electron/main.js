@@ -56,6 +56,34 @@ app.whenReady().then(() => {
         }
       }, 500);
     });
+    ipcMain.on('open-tmdb-login-window', (event, url) => {
+      const tmdbLoginWindow = new BrowserWindow({
+        width: 800,
+        height: 800,
+        parent: mainWindow,
+        modal: true,
+      });
+      tmdbLoginWindow.loadURL(url);
+
+      const interval = setInterval(() => {
+        if (tmdbLoginWindow.isDestroyed()) {
+          clearInterval(interval);
+          return;
+        }
+
+        const currentURL = tmdbLoginWindow.webContents.getURL();
+
+        // Check for the TMDB callback URL
+        if (currentURL.startsWith('http://127.0.0.1:8000/api/auth/tmdb/callback/')) {
+          clearInterval(interval);
+
+          // Send a success message back to the frontend
+          mainWindow.webContents.send('tmdb-link-success');
+
+          setTimeout(() => tmdbLoginWindow.close(), 500); // Close the window
+        }
+      }, 500);
+    });
   }
 
   createWindow();
