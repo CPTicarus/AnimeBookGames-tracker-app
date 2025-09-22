@@ -20,12 +20,15 @@ class Media(models.Model):
     BOOK = 'BOOK'
     GAME = 'GAME'
     TV_SHOW = 'TV'
+    MANGA = 'MANGA'
+    
     MEDIA_TYPE_CHOICES = [
         (ANIME, 'Anime'),
         (MOVIE, 'Movie'),
         (BOOK, 'Book'),
         (GAME, 'Game'),
         (TV_SHOW, 'TV Show'),
+        (MANGA, 'Manga'),
     ]
 
     media_type = models.CharField(max_length=7, choices=MEDIA_TYPE_CHOICES)
@@ -41,12 +44,13 @@ class Media(models.Model):
     # IDs from external services to prevent duplicates and for syncing
     anilist_id = models.IntegerField(unique=True, blank=True, null=True)
     tmdb_id = models.IntegerField(blank=True, null=True) 
-    # ... add more IDs for other services as needed
+    rawg_id = models.IntegerField(unique=True, blank=True, null=True)
+    google_book_id = models.CharField(unique=True, blank=True, null=True)
 
     def __str__(self):
         return f"{self.title} ({self.get_media_type_display()})"
     class Meta:
-        unique_together = [['tmdb_id', 'media_type']]
+        unique_together = [['tmdb_id', 'media_type'], ['google_book_id', 'media_type']]
     
 class UserMedia(models.Model):
     # Define constants for the user's status

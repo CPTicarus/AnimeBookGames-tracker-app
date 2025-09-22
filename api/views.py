@@ -14,7 +14,7 @@ from rest_framework.authentication import TokenAuthentication
 from difflib import SequenceMatcher
 import concurrent.futures
 
-from .services import anilist_service, tmdb_service
+from .services import anilist_service, tmdb_service, rawg_service, google_books_service
 from .models import Media, Profile, UserMedia, TMDBRequestToken 
 from .serializers import MediaSerializer, UserMediaSerializer
 
@@ -83,7 +83,7 @@ class UserMediaUpdateView(APIView):
         serializer = UserMediaSerializer(user_media_item)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-class MediaSearchView(APIView): 
+class MediaSearchView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
@@ -92,62 +92,78 @@ class MediaSearchView(APIView):
         if not query:
             return Response([])
 
+        sources_str = request.query_params.get('sources', 'ANIME,MANGA,MOVIE,TV_SHOW,GAME,BOOK')
+        sources = sources_str.split(',')
+        
         results = []
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            anilist_future = executor.submit(anilist_service.search_anime, query)
-            movies_future = executor.submit(tmdb_service.search_movies, query)
-            tv_shows_future = executor.submit(tmdb_service.search_tv_shows, query)
+            future_to_source = {}
+            
+            if 'ANIME' in sources:
+                future_to_source[executor.submit(anilist_service.search_anime, query)] = 'ANIME'
+            if 'MANGA' in sources:
+                future_to_source[executor.submit(anilist_service.search_manga, query)] = 'MANGA'
+            if 'MOVIE' in sources:
+                future_to_source[executor.submit(tmdb_service.search_movies, query)] = 'MOVIE'
+            if 'TV_SHOW' in sources:
+                future_to_source[executor.submit(tmdb_service.search_tv_shows, query)] = 'TV_SHOW'
+            if 'GAME' in sources:
+                future_to_source[executor.submit(rawg_service.search_games, query)] = 'GAME'
+            if 'BOOK' in sources:
+                future_to_source[executor.submit(google_books_service.search_books, query)] = 'BOOK'
 
-            anilist_data = anilist_future.result()
-            movie_data = movies_future.result()
-            tv_data = tv_shows_future.result()
-
-        if anilist_data:
-            for item in anilist_data:
-                results.append({
-                    "api_source": "ANILIST", "api_id": item['id'], "primary_title": item['title']['romaji'],
-                    "secondary_title": item['title']['english'], "media_type": "ANIME",
-                    "cover_image_url": item['coverImage']['large']
-                })
+            for future in concurrent.futures.as_completed(future_to_source):
+                source_type = future_to_source[future]
+                try:
+                    data = future.result()
+                    
+                    if source_type == 'ANIME' or source_type == 'MANGA':
+                        for item in data:
+                            results.append({
+                                "api_source": "ANILIST", "api_id": item['id'],
+                                "primary_title": item['title']['romaji'], "secondary_title": item['title']['english'],
+                                "media_type": source_type,
+                                "cover_image_url": item['coverImage']['large']
+                            })
+                    elif source_type == 'MOVIE':
+                        for item in data:
+                            if not item.get('poster_path'): continue
+                            results.append({
+                                "api_source": "TMDB", "api_id": item['id'], "primary_title": item['title'],
+                                "secondary_title": item.get('original_title'), "media_type": "MOVIE",
+                                "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
+                            })
+                    elif source_type == 'TV_SHOW':
+                        for item in data:
+                            if not item.get('poster_path'): continue
+                            results.append({
+                                "api_source": "TMDB", "api_id": item['id'], "primary_title": item['name'],
+                                "secondary_title": item.get('original_name'), "media_type": "TV_SHOW",
+                                "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
+                            })
+                    elif source_type == 'GAME':
+                        for item in data:
+                            if not item.get('background_image'): continue
+                            results.append({
+                                "api_source": "RAWG", "api_id": item['id'], "primary_title": item['name'],
+                                "secondary_title": None, "media_type": "GAME",
+                                "cover_image_url": item['background_image']
+                            })
+                    elif source_type == 'BOOK':
+                        for item in data:
+                            volume_info = item.get('volumeInfo', {})
+                            image_links = volume_info.get('imageLinks', {})
+                            if not image_links.get('thumbnail'): continue
+                            results.append({
+                                "api_source": "GOOGLE", "api_id": item['id'],
+                                "primary_title": volume_info.get('title'),
+                                "secondary_title": ", ".join(volume_info.get('authors', [])),
+                                "media_type": "BOOK",
+                                "cover_image_url": image_links.get('thumbnail')
+                            })
+                except Exception as exc:
+                    print(f'{source_type} search generated an exception: {exc}')
         
-        if movie_data:
-            for item in movie_data:
-                if not item.get('poster_path'): continue
-                results.append({
-                    "api_source": "TMDB", "api_id": item['id'], "primary_title": item['title'],
-                    "secondary_title": item.get('original_title'), "media_type": "MOVIE",
-                    "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
-                })
-        
-        if tv_data:
-            for item in tv_data:
-                if not item.get('poster_path'): continue
-                results.append({
-                    "api_source": "TMDB", "api_id": item['id'], "primary_title": item['name'],
-                    "secondary_title": item.get('original_name'), "media_type": "TV_SHOW",
-                    "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
-                })
-                
-        for item in anilist_data:
-            results.append({
-                "api_source": "ANILIST", "api_id": item['id'], "primary_title": item['title']['romaji'],
-                "secondary_title": item['title']['english'], "media_type": "ANIME",
-                "cover_image_url": item['coverImage']['large']
-            })
-        for item in movie_data:
-            if not item.get('poster_path'): continue
-            results.append({
-                "api_source": "TMDB", "api_id": item['id'], "primary_title": item['title'],
-                "secondary_title": item.get('original_title'), "media_type": "MOVIE",
-                "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
-            })
-        for item in tv_data:
-            if not item.get('poster_path'): continue
-            results.append({
-                "api_source": "TMDB", "api_id": item['id'], "primary_title": item['name'],
-                "secondary_title": item.get('original_name'), "media_type": "TV_SHOW",
-                "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
-            })
         return Response(results)
 
 class UserMediaAddView(APIView):
@@ -167,15 +183,30 @@ class UserMediaAddView(APIView):
                 'primary_title': data.get('primary_title'), 'secondary_title': data.get('secondary_title'),
                 'cover_image_url': data.get('cover_image_url'), 'description': data.get('description'),
             }
+            
             if api_source == 'ANILIST':
-                media_obj, _ = Media.objects.update_or_create(anilist_id=api_id, media_type=Media.ANIME, defaults=defaults)
+                media_obj, _ = Media.objects.update_or_create(
+                    anilist_id=api_id, defaults=defaults, media_type=data.get('media_type')
+                )
             elif api_source == 'TMDB':
-                media_obj, _ = Media.objects.update_or_create(tmdb_id=api_id, media_type=data.get('media_type'), defaults=defaults)
+                media_obj, _ = Media.objects.update_or_create(
+                    tmdb_id=api_id, media_type=data.get('media_type'), defaults=defaults
+                )
+            elif api_source == 'RAWG':
+                media_obj, _ = Media.objects.update_or_create(
+                    rawg_id=api_id, media_type=Media.GAME, defaults=defaults
+                )
+            elif api_source == 'GOOGLE':
+                media_obj, _ = Media.objects.update_or_create(
+                    google_book_id=api_id, media_type=Media.BOOK, defaults=defaults
+                )
             else:
                 return Response({"error": "Invalid api_source"}, status=status.HTTP_400_BAD_REQUEST)
 
             profile = request.user.profile
-            user_media_item, created = UserMedia.objects.get_or_create(profile=profile, media=media_obj, defaults={'status': 'PLANNED'})
+            user_media_item, created = UserMedia.objects.get_or_create(
+                profile=profile, media=media_obj, defaults={'status': 'PLANNED'}
+            )
 
             if created:
                 return Response({"success": f"'{media_obj.primary_title}' added to your list."}, status=status.HTTP_201_CREATED)
@@ -183,7 +214,7 @@ class UserMediaAddView(APIView):
                 return Response({"message": f"'{media_obj.primary_title}' is already in your list."}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": "An error occurred.", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        
 class UserMediaListView(APIView):
     # Tell this view to use TokenAuthentication instead of SessionAuthentication
     authentication_classes = [TokenAuthentication]
@@ -312,34 +343,47 @@ class SyncAniListView(APIView):
             return Response({"error": "AniList account not linked."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Fetch the full list from the service
-            full_list = anilist_service.fetch_full_user_list(profile.anilist_access_token)
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                anime_future = executor.submit(anilist_service.fetch_full_user_list, profile.anilist_access_token)
+                manga_future = executor.submit(anilist_service.fetch_full_user_manga_list, profile.anilist_access_token)
 
-            # Process the list and save to the database
+                anime_list = anime_future.result()
+                manga_list = manga_future.result()
+
+            full_list = anime_list + manga_list # Combine the results
+
+            # The rest of the logic is the same, but now processes both
+            status_map = { 
+                            'CURRENT': 'WATCHING',
+                            'PLANNING': 'PLANNED',
+                            'COMPLETED': 'COMPLETED',
+                            'DROPPED': 'DROPPED',
+                            'PAUSED': 'PAUSED', 
+                        }
+
             for entry in full_list:
                 media_data = entry['media']
 
-                # Get or create the Media item (cache it)
+                # Determine media type based on which list it came from
+                # (A more robust way would check the 'format' field from AniList)
+                media_type = Media.MANGA if entry in manga_list else Media.ANIME
+
                 media_obj, _ = Media.objects.update_or_create(
                     anilist_id=media_data['id'],
                     defaults={
-                        # Use the new generic field names
                         'primary_title': media_data['title']['romaji'],
                         'secondary_title': media_data['title']['english'],
-                        'media_type': Media.ANIME,
+                        'media_type': media_type,
                         'cover_image_url': media_data['coverImage']['large'],
                     }
                 )
 
-                # Create or update the user's personal tracking info for this media
+                app_status = status_map.get(entry['status'], 'PLANNED')
+
                 UserMedia.objects.update_or_create(
                     profile=profile,
                     media=media_obj,
-                    defaults={
-                        'status': entry['status'],
-                        'score': entry['score'],
-                        'progress': entry['progress'],
-                    }
+                    defaults={'status': app_status, 'score': entry['score'], 'progress': entry['progress']}
                 )
 
             return Response({"success": f"Sync complete. Processed {len(full_list)} items."}, status=status.HTTP_200_OK)

@@ -111,3 +111,61 @@ def fetch_full_user_list(access_token):
             break
         page += 1
     return all_entries
+
+#-------------manga---------------
+def search_manga(query_string):
+    
+    transport = ResilientRequestsHTTPTransport(url=ANILIST_API_URL)
+    client = Client(transport=transport, fetch_schema_from_transport=False)
+    
+    query = gql('''
+        query ($search: String) {
+            Page(page: 1, perPage: 5) {
+                media(search: $search, type: MANGA, sort: SEARCH_MATCH) { # <-- Changed to MANGA
+                    id
+                    title { romaji, english }
+                    coverImage { large }
+                }
+            }
+        }
+    ''')
+    params = {"search": query_string}
+    result = client.execute(query, variable_values=params)
+    return result.get('Page', {}).get('media', [])
+
+def fetch_full_user_manga_list(access_token):
+    """
+    Fetches all entries from a user's MANGA list, handling pagination.
+    """
+    transport = ResilientRequestsHTTPTransport(url=ANILIST_API_URL)
+    client = Client(transport=transport, fetch_schema_from_transport=False) 
+       
+    viewer_profile = get_viewer_profile(access_token)
+    user_name = viewer_profile['name']
+
+    query = gql('''
+        query ($userName: String, $page: Int, $perPage: Int) {
+            Page (page: $page, perPage: $perPage) {
+                pageInfo { hasNextPage }
+                mediaList (userName: $userName, type: MANGA) {
+                    status, score, progress,
+                    media { 
+                    id,
+                    title { romaji, english },
+                    coverImage { large } 
+                    }
+                }
+            }
+        }
+    ''')
+    all_entries = []
+    page = 1
+    while True:
+        params = {"userName": user_name, "page": page, "perPage": 50}
+        result = client.execute(query, variable_values=params)
+        page_data = result['Page']
+        all_entries.extend(page_data['mediaList'])
+        if not page_data['pageInfo']['hasNextPage']:
+            break
+        page += 1
+    return all_entries

@@ -2,11 +2,18 @@ import { useState, useEffect, useMemo } from 'react';
 import api from '../api';
 import debounce from 'lodash.debounce';
 
-import { 
-  Autocomplete, TextField, Card, CardMedia, Stack, Typography, Box, Accordion, AccordionSummary, AccordionDetails,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, Select, MenuItem, FormControl, InputLabel, Chip, CircularProgress, Divider
+import {
+  Autocomplete, TextField, Card, CardMedia, Stack, Typography, Box,
+  Accordion, AccordionSummary, AccordionDetails,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Button, Select, MenuItem, FormControl, InputLabel,
+  Chip, CircularProgress, Divider, ToggleButton, ToggleButtonGroup
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import MovieIcon from '@mui/icons-material/Movie';
+import TvIcon from '@mui/icons-material/Tv';
+import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
+import AnimationIcon from '@mui/icons-material/Animation';
 
 // Interfaces for our data
 interface Media { 
@@ -36,12 +43,18 @@ function LibraryPage() {
   const [userMediaList, setUserMediaList] = useState<UserMedia[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
 
+  const [sources, setSources] = useState(() => ['ANIME', 'MOVIE', 'TV_SHOW', 'GAME']);
   // State for the Autocomplete search
   const [options, setOptions] = useState<readonly Media[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editingItem, setEditingItem] = useState<UserMedia | null>(null);
 
+  const handleSourceChange = (_event: React.MouseEvent<HTMLElement>, newSources: string[]) => {
+    if (newSources.length > 0) {
+      setSources(newSources);
+    }
+  };
 
   const fetchLibrary = async () => {
     setLibraryLoading(true);
@@ -68,15 +81,22 @@ function LibraryPage() {
   };
 
   const debouncedSearch = useMemo(
-    () => debounce((query: string, callback: (options: Media[]) => void) => {
-      if (query.trim() === '') {
-        callback([]);
-        return;
-      }
-      api.get<Media[]>(`/api/search/?q=${query}`).then(response => {
-        callback(response.data);
-      });
-    }, 500),
+    () =>
+      debounce(
+        (query: string, callback: (options: Media[]) => void, selectedSources: string[]) => {
+          if (!query.trim()) {
+            callback([]);
+            return;
+          }
+          api
+            .get<Media[]>(`/api/search/`, {
+              params: { q: query, sources: selectedSources.join(",") },
+            })
+            .then((response) => callback(response.data))
+            .catch(() => callback([])); // Return empty array on error
+        },
+        500
+      ),
     []
   );
 
@@ -130,17 +150,46 @@ function LibraryPage() {
     return indexA - indexB;
   });
 
+  useEffect(() => {
+    if (inputValue === "") {
+      setOptions([]);
+      return;
+    }
+    setSearchLoading(true);
+    debouncedSearch(inputValue, (newOptions) => {
+      setSearchLoading(false);
+      setOptions(newOptions);
+    }, sources);
+  }, [inputValue, sources, debouncedSearch]);
+
   return (
     <Box sx={{ p: 2 }}>
-      {/* Search */}
+      <ToggleButtonGroup
+        value={sources}
+        onChange={handleSourceChange}
+        aria-label="search sources"
+        size="small"
+        sx={{ mb: 2, display: 'flex', justifyContent: 'center', flexWrap: 'wrap' }}
+      >
+        <ToggleButton value="ANIME" aria-label="anime">
+          <AnimationIcon sx={{ mr: 1 }} /> Anime
+        </ToggleButton>
+        <ToggleButton value="MOVIE" aria-label="movies">
+          <MovieIcon sx={{ mr: 1 }} /> Movies
+        </ToggleButton>
+        <ToggleButton value="TV_SHOW" aria-label="tv shows">
+          <TvIcon sx={{ mr: 1 }} /> TV Shows
+        </ToggleButton>
+        <ToggleButton value="GAME" aria-label="games">
+          <SportsEsportsIcon sx={{ mr: 1 }} /> Games
+        </ToggleButton>
+      </ToggleButtonGroup>
       <Autocomplete
         options={options}
         getOptionLabel={(option) => option.secondary_title || option.primary_title}
         renderOption={(props, option) => (
-          <Box component="li" sx={{ display: 'flex', alignItems: 'center' }} {...props} key={option.id}>
-            {option.cover_image_url && (
-              <img loading="lazy" width="40" src={option.cover_image_url} alt="" style={{ marginRight: 8, borderRadius: 4 }} />
-            )}
+          <Box component="li" sx={{ '& > img': { mr: 2, flexShrink: 0 } }} {...props} key={option.api_id}>
+            <img loading="lazy" width="40" src={option.cover_image_url || ''} alt="" style={{ marginRight: 8, borderRadius: 4 }} />
             <Typography variant="body2">
               {option.secondary_title || option.primary_title} 
               <Typography component="span" variant="caption" color="text.secondary"> ({option.media_type})</Typography>
@@ -157,10 +206,10 @@ function LibraryPage() {
         onInputChange={(_event, newInputValue) => {
           setInputValue(newInputValue);
           setSearchLoading(true);
-          debouncedSearch(newInputValue, (options) => {
+          debouncedSearch(newInputValue, (newOptions) => {
             setSearchLoading(false);
-            setOptions(options);
-          });
+            setOptions(newOptions);
+          }, sources);
         }}
         inputValue={inputValue}
         loading={searchLoading}
@@ -182,11 +231,8 @@ function LibraryPage() {
         )}
       />
 
-      {message && (
-        <Typography sx={{ my: 2, color: 'primary.main' }}>{message}</Typography>
-      )}
+      {message && ( <Typography sx={{ my: 2, color: 'primary.main' }}>{message}</Typography> )}
 
-      {/* Library List */}
       <Typography variant="h4" sx={{ mt: 4, mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
         Your Library
       </Typography>
@@ -252,20 +298,37 @@ function LibraryPage() {
         </Box>
       )}
 
-      {/* Edit Modal */}
       {editingItem && (
         <Dialog open={!!editingItem} onClose={handleCloseModal} fullWidth maxWidth="xs">
-          <DialogTitle>
-            Edit: {editingItem.media.secondary_title || editingItem.media.primary_title}
+          {/* Title section with cover image */}
+          <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            {editingItem.media.cover_image_url && (
+              <img
+                src={editingItem.media.cover_image_url}
+                alt={editingItem.media.primary_title}
+                style={{
+                  width: 50,
+                  height: 70,
+                  borderRadius: 4,
+                  objectFit: "cover",
+                  flexShrink: 0,
+                }}
+              />
+            )}
+            <Typography variant="h6">
+              {editingItem.media.secondary_title || editingItem.media.primary_title}
+            </Typography>
           </DialogTitle>
           <Divider />
+
+          {/* Content */}
           <DialogContent>
             <Stack spacing={3} sx={{ mt: 2 }}>
               <FormControl fullWidth>
                 <InputLabel>Status</InputLabel>
                 <Select
                   name="status"
-                  value={editingItem.status || ''}
+                  value={editingItem.status || ""}
                   label="Status"
                   onChange={handleFormChange}
                 >
@@ -280,22 +343,40 @@ function LibraryPage() {
                 name="score"
                 label="Score (0–10)"
                 type="number"
-                value={editingItem.score || ''}
+                value={editingItem.score || ""}
                 onChange={handleFormChange}
-                inputProps={{ step: '0.1', min: 0, max: 10 }}
+                inputProps={{ step: "0.1", min: 0, max: 10 }}
               />
               <TextField
                 name="progress"
                 label="Progress"
                 type="number"
-                value={editingItem.progress || ''}
+                value={editingItem.progress || ""}
                 onChange={handleFormChange}
               />
             </Stack>
           </DialogContent>
+
+          {/* Actions: Cancel | Delete | Save */}
           <DialogActions>
             <Button onClick={handleCloseModal}>Cancel</Button>
-            <Button onClick={handleSaveChanges} variant="contained">Save</Button>
+            <Button
+              onClick={async () => {
+                try {
+                  await api.delete(`/api/list/delete/${editingItem.id}/`);
+                  handleCloseModal();
+                  fetchLibrary(); // refresh after delete
+                } catch (err) {
+                  console.error("Failed to delete item", err);
+                }
+              }}
+              color="error"
+            >
+              Delete
+            </Button>
+            <Button onClick={handleSaveChanges} variant="contained">
+              Save
+            </Button>
           </DialogActions>
         </Dialog>
       )}
