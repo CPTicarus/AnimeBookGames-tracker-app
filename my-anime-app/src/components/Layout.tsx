@@ -1,6 +1,20 @@
 import React, { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
-import { AppBar, Toolbar, IconButton, Typography, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Box, Button } from '@mui/material';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import {
+  AppBar,
+  Toolbar,
+  IconButton,
+  Typography,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Box,
+  Button,
+  Divider
+} from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
@@ -12,6 +26,7 @@ interface LayoutProps {
 function Layout({ onLogout }: LayoutProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleNavigation = (path: string) => {
     navigate(path);
@@ -24,8 +39,9 @@ function Layout({ onLogout }: LayoutProps) {
   ];
 
   return (
-    <div>
-      <AppBar position="static">
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
+      {/* Top App Bar */}
+      <AppBar position="fixed" sx={{ bgcolor: 'background.paper', borderBottom: '2px solid', borderColor: 'primary.main' }}>
         <Toolbar>
           <IconButton
             size="large"
@@ -37,20 +53,41 @@ function Layout({ onLogout }: LayoutProps) {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
             My Media Tracker
           </Typography>
-          <Button color="inherit" onClick={onLogout}>Logout</Button>
+          <Button variant="outlined" color="primary" onClick={onLogout}>
+            Logout
+          </Button>
         </Toolbar>
       </AppBar>
 
-      <Drawer anchor="left" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-        <Box sx={{ width: 250 }} role="presentation">
+      {/* Drawer */}
+      <Drawer
+        anchor="left"
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        PaperProps={{
+          sx: { bgcolor: 'background.paper', color: 'text.primary' }
+        }}
+      >
+        <Box sx={{ width: 250 }}>
+          <Typography variant="h6" sx={{ p: 2, fontWeight: 'bold', color: 'primary.main' }}>
+            Navigation
+          </Typography>
+          <Divider />
           <List>
             {menuItems.map((item) => (
               <ListItem key={item.text} disablePadding>
-                <ListItemButton onClick={() => handleNavigation(item.path)}>
-                  <ListItemIcon>{item.icon}</ListItemIcon>
+                <ListItemButton
+                  selected={location.pathname === item.path}
+                  onClick={() => handleNavigation(item.path)}
+                  sx={{
+                    '&.Mui-selected': { bgcolor: 'primary.main', color: '#fff' },
+                    '&.Mui-selected:hover': { bgcolor: 'primary.dark' }
+                  }}
+                >
+                  <ListItemIcon sx={{ color: 'inherit' }}>{item.icon}</ListItemIcon>
                   <ListItemText primary={item.text} />
                 </ListItemButton>
               </ListItem>
@@ -59,10 +96,11 @@ function Layout({ onLogout }: LayoutProps) {
         </Box>
       </Drawer>
 
-      <main style={{ padding: '20px' }}>
+      {/* Main content with spacing below AppBar */}
+      <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}>
         <Outlet />
-      </main>
-    </div>
+      </Box>
+    </Box>
   );
 }
 

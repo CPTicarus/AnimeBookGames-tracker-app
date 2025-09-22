@@ -5,17 +5,19 @@
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 1280px;   /* keeps it from going too wide */
+  margin: 0 auto;      /* center horizontally */
+  padding: 2rem;       /* breathing room */
 }
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+
+/* Media item container */
+.media-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
 }
 
 @keyframes logo-spin {
@@ -70,11 +72,12 @@
 .title-english {
   font-size: 1.1em;
   font-weight: bold;
+  color: #fff;
 }
 
 .title-romaji {
   font-size: 0.9em;
-  color: #666;
+  color: #bbb;
 }
 
 .card-title-container {

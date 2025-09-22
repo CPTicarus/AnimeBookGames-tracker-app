@@ -40,12 +40,14 @@ class Media(models.Model):
 
     # IDs from external services to prevent duplicates and for syncing
     anilist_id = models.IntegerField(unique=True, blank=True, null=True)
-    tmdb_id = models.IntegerField(unique=True, blank=True, null=True)
+    tmdb_id = models.IntegerField(blank=True, null=True) 
     # ... add more IDs for other services as needed
 
     def __str__(self):
         return f"{self.title} ({self.get_media_type_display()})"
-
+    class Meta:
+        unique_together = [['tmdb_id', 'media_type']]
+    
 class UserMedia(models.Model):
     # Define constants for the user's status
     WATCHING = 'WATCHING'

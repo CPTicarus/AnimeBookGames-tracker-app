@@ -102,6 +102,32 @@ class MediaSearchView(APIView):
             movie_data = movies_future.result()
             tv_data = tv_shows_future.result()
 
+        if anilist_data:
+            for item in anilist_data:
+                results.append({
+                    "api_source": "ANILIST", "api_id": item['id'], "primary_title": item['title']['romaji'],
+                    "secondary_title": item['title']['english'], "media_type": "ANIME",
+                    "cover_image_url": item['coverImage']['large']
+                })
+        
+        if movie_data:
+            for item in movie_data:
+                if not item.get('poster_path'): continue
+                results.append({
+                    "api_source": "TMDB", "api_id": item['id'], "primary_title": item['title'],
+                    "secondary_title": item.get('original_title'), "media_type": "MOVIE",
+                    "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
+                })
+        
+        if tv_data:
+            for item in tv_data:
+                if not item.get('poster_path'): continue
+                results.append({
+                    "api_source": "TMDB", "api_id": item['id'], "primary_title": item['name'],
+                    "secondary_title": item.get('original_name'), "media_type": "TV_SHOW",
+                    "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
+                })
+                
         for item in anilist_data:
             results.append({
                 "api_source": "ANILIST", "api_id": item['id'], "primary_title": item['title']['romaji'],
@@ -324,10 +350,64 @@ class SyncAniListView(APIView):
 class SyncTMDBView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
+
     def post(self, request):
-        # The logic here will be very similar to SyncAniListView.
-        # 1. Get the user's profile and their tmdb_session_id.
-        # 2. Call new functions in tmdb_service to get their watchlist and ratings.
-        # 3. Loop through the results, update_or_create Media and UserMedia entries.
-        # 4. Return a success message.
-        return Response({"success": "TMDB Sync functionality to be implemented."})
+        profile = request.user.profile
+        if not profile.tmdb_session_id:
+            return Response({"error": "TMDB account not linked."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            account_details = tmdb_service.get_account_details(profile.tmdb_session_id)
+            account_id = account_details['id']
+            profile.tmdb_account_id = account_id
+            profile.save()
+
+            movie_watchlist = tmdb_service.get_movie_watchlist(account_id, profile.tmdb_session_id)
+            tv_watchlist = tmdb_service.get_tv_watchlist(account_id, profile.tmdb_session_id)
+            rated_movies = tmdb_service.get_rated_movies(account_id, profile.tmdb_session_id)
+            rated_tv = tmdb_service.get_rated_tv(account_id, profile.tmdb_session_id)
+
+            processed_items = {}
+
+            for item in movie_watchlist + tv_watchlist:
+                item_type = Media.MOVIE if 'title' in item else Media.TV_SHOW
+                processed_items[item['id']] = {'data': item, 'type': item_type, 'status': 'PLANNED', 'score': None}
+
+            for item in rated_movies + rated_tv:
+                item_type = Media.MOVIE if 'title' in item else Media.TV_SHOW
+                processed_items[item['id']] = {'data': item, 'type': item_type, 'status': 'COMPLETED', 'score': item.get('rating')}
+
+            # --- KEY CHANGE IS IN THIS LOOP ---
+            items_processed_count = 0
+            for tmdb_id, item_info in processed_items.items():
+                item_data = item_info['data']
+                item_type = item_info['type']
+                
+                # Safely skip any item that doesn't have a poster image
+                if not item_data.get('poster_path'):
+                    continue
+
+                defaults = {
+                    'primary_title': item_data.get('title') or item_data.get('name'),
+                    'secondary_title': item_data.get('original_title') or item_data.get('original_name'),
+                    'cover_image_url': f"https://image.tmdb.org/t/p/w500{item_data.get('poster_path')}",
+                    'description': item_data.get('overview'),
+                }
+                media_obj, _ = Media.objects.update_or_create(
+                    tmdb_id=tmdb_id, media_type=item_type, defaults=defaults
+                )
+
+                UserMedia.objects.update_or_create(
+                    profile=profile, media=media_obj,
+                    defaults={
+                        'status': item_info['status'],
+                        'score': item_info['score'],
+                        'progress': 0, 
+                    }
+                )
+                items_processed_count += 1
+            
+            return Response({"success": f"Sync complete. Processed {items_processed_count} items."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            print("!!! TMDB SYNC FAILED:", e)
+            return Response({"error": "An error occurred during TMDB sync", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

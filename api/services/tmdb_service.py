@@ -70,3 +70,48 @@ def create_session_id(request_token):
     response = requests.post(url, params=params, json=json_body)
     response.raise_for_status()
     return response.json()['session_id']
+
+def get_account_details(session_id):
+    """Gets the TMDB account details to find the account_id."""
+    session = _get_resilient_session()
+    url = f"{TMDB_API_URL}/account"
+    params = {'api_key': TMDB_API_KEY, 'session_id': session_id}
+    response = session.get(url, params=params)
+    response.raise_for_status()
+    return response.json()
+
+def get_movie_watchlist(account_id, session_id):
+    """Gets a user's movie watchlist."""
+    session = _get_resilient_session()
+    url = f"{TMDB_API_URL}/account/{account_id}/watchlist/movies"
+    params = {'api_key': TMDB_API_KEY, 'session_id': session_id, 'language': 'en-US'}
+    response = session.get(url, params=params)
+    response.raise_for_status()
+    return response.json().get('results', [])
+
+def get_tv_watchlist(account_id, session_id):
+    """Gets a user's TV show watchlist."""
+    session = _get_resilient_session()
+    url = f"{TMDB_API_URL}/account/{account_id}/watchlist/tv"
+    params = {'api_key': TMDB_API_KEY, 'session_id': session_id, 'language': 'en-US'}
+    response = session.get(url, params=params)
+    response.raise_for_status()
+    return response.json().get('results', [])
+
+def get_rated_movies(account_id, session_id):
+    """Gets a user's rated movies."""
+    session = _get_resilient_session()
+    url = f"{TMDB_API_URL}/account/{account_id}/rated/movies"
+    params = {'api_key': TMDB_API_KEY, 'session_id': session_id, 'language': 'en-US'}
+    response = session.get(url, params=params)
+    response.raise_for_status()
+    return response.json().get('results', [])
+
+def get_rated_tv(account_id, session_id):
+    """Gets a user's rated TV shows."""
+    session = _get_resilient_session()
+    url = f"{TMDB_API_URL}/account/{account_id}/rated/tv"
+    params = {'api_key': TMDB_API_KEY, 'session_id': session_id, 'language': 'en-US'}
+    response = session.get(url, params=params)
+    response.raise_for_status()
+    return response.json().get('results', [])
