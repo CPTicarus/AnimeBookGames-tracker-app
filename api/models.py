@@ -10,6 +10,10 @@ class Profile(models.Model):
     tmdb_account_id = models.CharField(max_length=100, blank=True, null=True)
     tmdb_session_id = models.CharField(max_length=255, blank=True, null=True)
 
+    mal_username = models.CharField(max_length=100, blank=True, null=True)
+    mal_access_token = models.TextField(blank=True, null=True)
+    mal_refresh_token = models.TextField(blank=True, null=True)
+
     def __str__(self):
         return self.user.username
 
@@ -47,6 +51,7 @@ class Media(models.Model):
     tmdb_id = models.IntegerField(blank=True, null=True) 
     rawg_id = models.IntegerField(unique=True, blank=True, null=True)
     google_book_id = models.CharField(unique=True, blank=True, null=True)
+    mal_id = models.IntegerField(unique=True, blank=True, null=True)
 
     def __str__(self):
         return f"{self.primary_title} ({self.get_media_type_display()})"
@@ -89,4 +94,9 @@ class UserMedia(models.Model):
 class TMDBRequestToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.CharField(max_length=255, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class MALAuthRequest(models.Model):
+    state = models.CharField(max_length=255, unique=True)
+    code_verifier = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -14,11 +14,12 @@ from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
 import concurrent.futures
 import traceback
+import traceback
+import requests
 
-from .services import anilist_service, tmdb_service, rawg_service, google_books_service
-from .models import Media, Profile, UserMedia, TMDBRequestToken 
+from .services import anilist_service, tmdb_service, rawg_service, google_books_service, mal_service 
+from .models import Media, Profile, UserMedia, TMDBRequestToken, MALAuthRequest
 from .serializers import UserMediaSerializer
-
 
 def csrf_token_view(request):
     """
@@ -377,44 +378,41 @@ class AniListLoginView(APIView):
     
 @method_decorator(csrf_exempt, name='dispatch')
 class AniListCallbackView(APIView):
-    # This view is now public, its security comes from the 'state' parameter
     authentication_classes = []
     permission_classes = []
     renderer_classes = [JSONRenderer]
 
     def get(self, request):
         auth_code = request.query_params.get('code')
-        # Get the 'state' parameter back from AniList
         app_token_key = request.query_params.get('state')
 
         if not auth_code or not app_token_key:
-            return Response({"error": "Auth code or state missing."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Auth code or state missing."}, status=400)
+
         try:
-            # Use the app token from 'state' to find the user
             token_obj = Token.objects.get(key=app_token_key)
             user = token_obj.user
             profile = user.profile
 
-            # Exchange AniList code for an AniList token
             anilist_token_data = anilist_service.exchange_code_for_token(auth_code)
             access_token = anilist_token_data['access_token']
 
             anilist_profile = anilist_service.get_viewer_profile(access_token)
-            anilist_username = anilist_profile['name']
-
-            # Update the user's profile with their AniList info
-            profile.anilist_username = anilist_username
+            profile.anilist_username = anilist_profile['name']
             profile.anilist_access_token = access_token
             profile.save()
 
-            return Response({
-                "success": f"Successfully linked AniList account '{anilist_username}'!",
-            }, status=status.HTTP_200_OK)
-        except Token.DoesNotExist:
-            return Response({"error": "Invalid state token. Authentication failed."}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({"error": "Authentication failed", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                "<html><body><script>window.close();</script>Login successful, you can close this window.</body></html>",
+                content_type="text/html"
+            )
 
+        except Token.DoesNotExist:
+            return Response({"error": "Invalid state token."}, status=400)
+        except Exception as e:
+            traceback.print_exc()
+            return Response({"error": str(e)}, status=500)
+        
 class TMDBLoginView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -458,6 +456,116 @@ class TMDBCallbackView(APIView):
             return Response({"error": "Invalid or expired request token. Please try again."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"error": "Failed to create TMDB session", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class MALLoginView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token_key = request.auth.key
+        code_verifier, code_challenge = mal_service.generate_pkce_codes()
+
+        # Store the state and code_verifier for the callback
+        MALAuthRequest.objects.update_or_create(
+            state=token_key,
+            defaults={'code_verifier': code_verifier}
+        )       
+        
+        auth_url = mal_service.get_auth_url(token_key, code_challenge)
+        return Response({"auth_url": auth_url})
+
+class MALCallbackView(APIView):
+    def get(self, request):
+        code = request.query_params.get('code')
+        state = request.query_params.get('state')
+
+        try:
+            # Retrieve the code_verifier using the state
+            auth_request = MALAuthRequest.objects.get(state=state)
+            code_verifier = auth_request.code_verifier
+
+            # Exchange code for token
+            token_data = mal_service.exchange_code_for_token(code, code_verifier)
+            access_token = token_data['access_token']
+            refresh_token = token_data['refresh_token']
+            
+            # Get the user associated with the state token
+            user = Token.objects.get(key=state).user
+            profile = user.profile
+            
+            # Get user info and save tokens
+            user_info = mal_service.get_user_info(access_token)
+            profile.mal_username = user_info['name']
+            profile.mal_access_token = access_token
+            profile.mal_refresh_token = refresh_token
+            profile.save()
+
+            # Clean up the temporary auth request
+            auth_request.delete()
+
+            return Response({"success": "MyAnimeList account successfully linked!"})
+
+        except MALAuthRequest.DoesNotExist:
+            return Response({"error": "Invalid or expired state token."}, status=400)
+        except Exception as e:
+            traceback.print_exc()
+            return Response({"error": "Failed to link MyAnimeList account.", "details": str(e)}, status=500)
+
+
+class SyncMALView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        profile = request.user.profile
+        if not profile.mal_access_token:
+            return Response({"error": "MyAnimeList account not linked."}, status=400)
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                anime_future = executor.submit(mal_service.fetch_user_list, profile.mal_access_token, "ANIME")
+                manga_future = executor.submit(mal_service.fetch_user_list, profile.mal_access_token, "MANGA")
+                
+                anime_list = anime_future.result()
+                manga_list = manga_future.result()
+            
+            full_list = anime_list + manga_list
+            status_map = {
+                'watching': 'IN_PROGRESS', 'reading': 'IN_PROGRESS',
+                'completed': 'COMPLETED',
+                'on_hold': 'PAUSED',
+                'dropped': 'DROPPED',
+                'plan_to_watch': 'PLANNED', 'plan_to_read': 'PLANNED',
+            }
+
+            for entry in full_list:
+                node = entry['node']
+                list_status = entry['list_status']
+                media_type = Media.ANIME if 'num_episodes_watched' in list_status else Media.MANGA
+
+                media_obj, _ = Media.objects.update_or_create(
+                    mal_id=node['id'],
+                    defaults={
+                        'media_type': media_type,
+                        'primary_title': node['title'],
+                        'cover_image_url': node.get('main_picture', {}).get('large')
+                    }
+                )
+                
+                UserMedia.objects.update_or_create(
+                    profile=profile,
+                    media=media_obj,
+                    defaults={
+                        'status': status_map.get(list_status['status'], 'PLANNED'),
+                        'score': list_status['score'],
+                        'progress': list_status.get('num_episodes_watched') or list_status.get('num_chapters_read', 0)
+                    }
+                )
+
+            return Response({"success": f"MyAnimeList sync complete. Processed {len(full_list)} items."})
+        except Exception as e:
+            traceback.print_exc()
+            return Response({"error": "An error occurred during MAL sync.", "details": str(e)}, status=500)
 #-------------------------------------------------
 
 class SyncAniListView(APIView):

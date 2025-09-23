@@ -8,10 +8,12 @@ const __dirname = path.dirname(__filename);
 app.whenReady().then(() => {
   const persistentSession = session.fromPartition('persist:anime-tracker');
 
+  let mainWindow;
+
   function createWindow() {
-    const mainWindow = new BrowserWindow({
-      width: 800,
-      height: 600,
+    mainWindow = new BrowserWindow({
+      width: 1200, // A bit wider for better UI experience
+      height: 800,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
         session: persistentSession,
@@ -19,73 +21,73 @@ app.whenReady().then(() => {
     });
 
     mainWindow.loadURL('http://localhost:5173');
-
-    ipcMain.on('open-login-window', (event, url) => {
-      const loginWindow = new BrowserWindow({
-        width: 600,
-        height: 800,
-        parent: mainWindow,
-        modal: true,
-        show: true,
-        webPreferences: {
-          session: persistentSession,
-        },
-      });
-      loginWindow.loadURL(url);
-
-      const interval = setInterval(async () => {
-        if (loginWindow.isDestroyed()) {
-          clearInterval(interval);
-          return;
-        }
-
-        const currentURL = loginWindow.webContents.getURL();
-
-        if (currentURL.startsWith('http://127.0.0.1:8000/api/auth/callback/')) {
-          clearInterval(interval);
-
-          const json = await loginWindow.webContents.executeJavaScript('document.body.innerText');
-          const tokenData = JSON.parse(json);
-          const appToken = tokenData.token;
-
-          if (appToken) {
-            mainWindow.webContents.send('login-success', appToken);
-          }
-
-          loginWindow.close();
-        }
-      }, 500);
-    });
-    ipcMain.on('open-tmdb-login-window', (event, url) => {
-      const tmdbLoginWindow = new BrowserWindow({
-        width: 800,
-        height: 800,
-        parent: mainWindow,
-        modal: true,
-      });
-      tmdbLoginWindow.loadURL(url);
-
-      const interval = setInterval(() => {
-        if (tmdbLoginWindow.isDestroyed()) {
-          clearInterval(interval);
-          return;
-        }
-
-        const currentURL = tmdbLoginWindow.webContents.getURL();
-
-        // Check for the TMDB callback URL
-        if (currentURL.startsWith('http://127.0.0.1:8000/api/auth/tmdb/callback/')) {
-          clearInterval(interval);
-
-          // Send a success message back to the frontend
-          mainWindow.webContents.send('tmdb-link-success');
-
-          setTimeout(() => tmdbLoginWindow.close(), 500); // Close the window
-        }
-      }, 500);
-    });
+    // mainWindow.webContents.openDevTools(); // Uncomment to debug
   }
 
+  // --- REUSABLE AUTH WINDOW HANDLER ---
+  function createAuthWindow(authUrl, callbackUrlPrefix, successEventName) {
+    const authWindow = new BrowserWindow({
+      width: 600,
+      height: 800,
+      parent: mainWindow,
+      modal: true,
+      show: true,
+      webPreferences: {
+        session: persistentSession,
+        // For security, don't enable nodeIntegration in untrusted windows
+      },
+    });
+
+    authWindow.loadURL(authUrl);
+
+    const interval = setInterval(() => {
+      if (authWindow.isDestroyed()) {
+        clearInterval(interval);
+        return;
+      }
+
+      try {
+        const currentURL = authWindow.webContents.getURL();
+        if (currentURL.startsWith(callbackUrlPrefix)) {
+          clearInterval(interval);
+          // Send a generic success message back to the frontend
+          mainWindow.webContents.send(successEventName);
+          // Close the window after a short delay
+          setTimeout(() => authWindow.close(), 500);
+        }
+      } catch (error) {
+        // Window may have been closed manually
+        // console.log(error);
+      }
+    }, 500);
+  }
+
+  ipcMain.on('open-login-window', (event, url) => {
+    createAuthWindow(
+      url,
+      'http://127.0.0.1:8000/api/auth/callback/',
+      'anilist-link-success'
+    );
+  });
+
+  ipcMain.on('open-tmdb-login-window', (event, url) => {
+    createAuthWindow(
+      url,
+      'http://127.0.0.1:8000/api/auth/tmdb/callback/',
+      'tmdb-link-success'
+    );
+  });
+
+  ipcMain.on('open-mal-login-window', (event, url) => {
+    createAuthWindow(
+      url,
+      'http://127.0.0.1:8000/api/auth/mal/callback/',
+      'mal-link-success'
+    );
+  });
+
+
+  // --- APP LIFECYCLE ---
   createWindow();
 
   app.on('activate', () => {

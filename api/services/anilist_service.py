@@ -3,9 +3,22 @@ from gql.transport.requests import RequestsHTTPTransport
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-import os
+from django.conf import settings
 
 ANILIST_API_URL = "https://graphql.anilist.co"
+
+def _get_resilient_session():
+    """Creates and returns a requests.Session with a retry strategy."""
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=3,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["POST", "GET"],
+        backoff_factor=1
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("https://", adapter)
+    return session
 
 class ResilientRequestsHTTPTransport(RequestsHTTPTransport):
     """
@@ -13,19 +26,8 @@ class ResilientRequestsHTTPTransport(RequestsHTTPTransport):
     resilient session for handling retries.
     """
     def __init__(self, *args, **kwargs):
-        # Create the resilient session here
-        session = requests.Session()
-        retry_strategy = Retry(
-            total=3,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["POST", "GET"],
-            backoff_factor=1
-        )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        session.mount("https://", adapter)
-        
-        # Manually assign the session and initialize the parent class
-        self._session = session
+        # Use the helper function to create the session
+        self._session = _get_resilient_session()
         super().__init__(*args, **kwargs)
 
 def search_anime(query_string):
@@ -62,13 +64,13 @@ def get_viewer_profile(access_token):
 def exchange_code_for_token(auth_code):
     # This function uses requests directly and does not need to change,
     # but for consistency, we can update it.
-    session = ResilientRequestsHTTPTransport(url="").session
+    session = _get_resilient_session()
     token_url = 'https://anilist.co/api/v2/oauth/token'
     payload = {
         'grant_type': 'authorization_code',
-        'client_id': os.getenv('ANILIST_CLIENT_ID'),
-        'client_secret': os.getenv('ANILIST_CLIENT_SECRET'),
-        'redirect_uri': os.getenv('ANILIST_REDIRECT_URI'),
+        'client_id': settings.ANILIST_CLIENT_ID, 
+        'client_secret': settings.ANILIST_CLIENT_SECRET, 
+        'redirect_uri': settings.ANILIST_REDIRECT_URI,   
         'code': auth_code,
     }
     response = session.post(token_url, json=payload)
@@ -170,6 +172,7 @@ def fetch_full_user_manga_list(access_token):
         page += 1
     return all_entries
 
+#-------- Trends --------------
 def get_trending_anime():
     transport = ResilientRequestsHTTPTransport(url=ANILIST_API_URL)
     client = Client(transport=transport, fetch_schema_from_transport=False) 
