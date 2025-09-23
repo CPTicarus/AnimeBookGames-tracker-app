@@ -61,36 +61,61 @@ class StatsView(APIView):
 
     def get(self, request):
         profile = request.user.profile
-        completed_list = UserMedia.objects.filter(profile=profile, status='COMPLETED')
+        completed_list = UserMedia.objects.filter(profile=profile, status='COMPLETED', score__isnull=False)
 
-        overall_stats = {'total_completed': completed_list.count()}
+        overall_stats = {'total_completed': completed_list.count(), 'weighted_average_score': 0}
         per_type_stats = {}
-
-        # Initialize the dictionary using the correct constants from the Media model
+        
         time_spent_minutes = {
             'OVERALL': 0, Media.ANIME: 0, Media.MOVIE: 0, Media.TV_SHOW: 0,
             Media.MANGA: 0, Media.BOOK: 0, Media.GAME: 0,
         }
+        total_weighted_score = 0
+        total_weight = 0
+        type_weighted_scores = {}
+        type_weights = {}
 
         for item in completed_list:
             media_type = item.media.media_type
+            score = item.score
+            
+            # 1. Calculate the weight for this item (time in minutes)
+            weight = 0
+            if media_type == Media.ANIME: weight = item.progress * 25
+            elif media_type == Media.MOVIE: weight = item.progress * 120
+            elif media_type == Media.TV_SHOW: weight = item.progress * (20 if item.progress > 100 else 45)
+            elif media_type == Media.GAME: weight = item.progress * 60
+            elif media_type == Media.BOOK: weight = item.progress * 360
+            elif media_type == Media.MANGA: weight = item.progress * 10
+            
+            # Use a default weight of 1 for items with 0 progress to include them in the average
+            if weight == 0: weight = 1
+
+            # 2. Add this weight to our totals
+            time_spent_minutes[media_type] += weight
+            total_weight += weight
+            total_weighted_score += score * weight
+
+            # Initialize per-type dictionaries
             if media_type not in per_type_stats:
-                per_type_stats[media_type] = {'total_completed': 0}
+                per_type_stats[media_type] = {'total_completed': 0, 'weighted_average_score': 0}
+                type_weighted_scores[media_type] = 0
+                type_weights[media_type] = 0
+            
+            # Per-type calculation
+            type_weighted_scores[media_type] += score * weight
+            type_weights[media_type] += weight
             per_type_stats[media_type]['total_completed'] += 1
 
-            if media_type == Media.ANIME:
-                time_spent_minutes[media_type] += item.progress * 25
-            elif media_type == Media.MOVIE:
-                time_spent_minutes[media_type] += item.progress * 100
-            elif media_type == Media.TV_SHOW:
-                time_spent_minutes[media_type] += item.progress * (20 if item.progress > 100 else 45)
-            elif media_type == Media.GAME:
-                time_spent_minutes[media_type] += item.progress * 60
-            elif media_type == Media.BOOK:
-                time_spent_minutes[media_type] += item.progress * 420
-            elif media_type == Media.MANGA:
-                time_spent_minutes[media_type] += item.progress * 10
-
+        # Finalize averages
+        if total_weight > 0:
+            overall_stats['weighted_average_score'] = round(total_weighted_score / total_weight, 2)
+        
+        for media_type, weighted_score in type_weighted_scores.items():
+            if type_weights.get(media_type, 0) > 0:
+                avg = round(weighted_score / type_weights[media_type], 2)
+                per_type_stats[media_type]['weighted_average_score'] = avg
+        
         time_spent_minutes['OVERALL'] = sum(time_spent_minutes.values())
         time_spent_hours = {key: round(value / 60, 1) for key, value in time_spent_minutes.items()}
 

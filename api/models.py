@@ -40,6 +40,7 @@ class Media(models.Model):
     
     description = models.TextField(blank=True, null=True)
     cover_image_url = models.URLField(blank=True, null=True)
+    length = models.IntegerField(null=True, blank=True)
 
     # IDs from external services to prevent duplicates and for syncing
     anilist_id = models.IntegerField(unique=True, blank=True, null=True)
@@ -82,7 +83,8 @@ class UserMedia(models.Model):
         unique_together = ('profile', 'media')
 
     def __str__(self):
-        return f"{self.profile.user.username}'s entry for {self.media.title}"
+        display_title = self.media.primary_title or self.media.secondary_title or "Untitled"
+        return f"{self.profile.user.username}'s entry for {display_title}"
     
 class TMDBRequestToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

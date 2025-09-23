@@ -22,6 +22,7 @@ import {
 // --- Interfaces ---
 interface TypeStats {
   total_completed: number;
+  weighted_average_score: number;
 }
 interface StatsData {
   overall: TypeStats;
@@ -65,8 +66,14 @@ const StatCard = ({
       <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
         {title}
       </Typography>
-      <Typography sx={{ mb: 1.5 }} color="text.secondary">
+      <Typography sx={{ mb: 1 }} color="text.secondary">
         Total Completed: {stats.total_completed}
+      </Typography>
+      <Typography sx={{ mb: 1 }} color="text.secondary">
+        Avg Score:{" "}
+        {stats.weighted_average_score
+          ? `${stats.weighted_average_score}/10`
+          : "N/A"}
       </Typography>
       <Divider sx={{ my: 1 }} />
       <Typography variant="body1" gutterBottom>
@@ -175,6 +182,12 @@ function StatsPage() {
               <Typography variant="h6" gutterBottom>
                 Total Completed: {stats.overall.total_completed}
               </Typography>
+              <Typography variant="h6" gutterBottom>
+                Avg Score:{" "}
+                {stats.overall.weighted_average_score
+                  ? `${stats.overall.weighted_average_score}/10`
+                  : "N/A"}
+              </Typography>
               <Divider sx={{ my: 1 }} />
               <Typography variant="body1" gutterBottom>
                 Estimated Time Spent Overall:
@@ -210,6 +223,7 @@ function StatsPage() {
       </Stack>
     </Box>
   );
+
 }
 
 export default StatsPage;
