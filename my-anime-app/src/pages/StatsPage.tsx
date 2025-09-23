@@ -156,6 +156,9 @@ function StatsPage() {
                     outerRadius={100}
                     paddingAngle={3}
                     dataKey="value"
+                    isAnimationActive={true}
+                    animationDuration={1200}
+                    animationEasing="ease-out"
                   >
                     {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />

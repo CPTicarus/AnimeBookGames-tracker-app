@@ -19,7 +19,7 @@ class Media(models.Model):
     MOVIE = 'MOVIE'
     BOOK = 'BOOK'
     GAME = 'GAME'
-    TV_SHOW = 'TV'
+    TV_SHOW = 'TV_SHOW'
     MANGA = 'MANGA'
     
     MEDIA_TYPE_CHOICES = [
@@ -48,7 +48,7 @@ class Media(models.Model):
     google_book_id = models.CharField(unique=True, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.title} ({self.get_media_type_display()})"
+        return f"{self.primary_title} ({self.get_media_type_display()})"
     class Meta:
         unique_together = [['tmdb_id', 'media_type'], ['google_book_id', 'media_type']]
     

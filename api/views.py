@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
 import concurrent.futures
+import traceback
 
 from .services import anilist_service, tmdb_service, rawg_service, google_books_service
 from .models import Media, Profile, UserMedia, TMDBRequestToken 
@@ -62,52 +63,39 @@ class StatsView(APIView):
         profile = request.user.profile
         completed_list = UserMedia.objects.filter(profile=profile, status='COMPLETED')
 
-        overall_stats = {
-            'total_completed': completed_list.count(),
-        }
-
+        overall_stats = {'total_completed': completed_list.count()}
         per_type_stats = {}
-        # --- THIS IS THE KEY CHANGE ---
-        # We initialize the dictionary using the constants from the Media model
-        # to guarantee the keys are correct.
+
+        # Initialize the dictionary using the correct constants from the Media model
         time_spent_minutes = {
-            'OVERALL': 0,
-            Media.ANIME: 0,
-            Media.MOVIE: 0,
-            Media.TV_SHOW: 0, # Uses 'TV'
-            Media.MANGA: 0,
-            Media.BOOK: 0,
-            Media.GAME: 0,
+            'OVERALL': 0, Media.ANIME: 0, Media.MOVIE: 0, Media.TV_SHOW: 0,
+            Media.MANGA: 0, Media.BOOK: 0, Media.GAME: 0,
         }
 
         for item in completed_list:
             media_type = item.media.media_type
-            
             if media_type not in per_type_stats:
                 per_type_stats[media_type] = {'total_completed': 0}
-            
             per_type_stats[media_type]['total_completed'] += 1
 
             if media_type == Media.ANIME:
                 time_spent_minutes[media_type] += item.progress * 25
             elif media_type == Media.MOVIE:
-                time_spent_minutes[media_type] += item.progress * 120
-            elif media_type == Media.TV_SHOW: 
-                time_spent_minutes[media_type] += item.progress * 45
+                time_spent_minutes[media_type] += item.progress * 100
+            elif media_type == Media.TV_SHOW:
+                time_spent_minutes[media_type] += item.progress * (20 if item.progress > 100 else 45)
             elif media_type == Media.GAME:
                 time_spent_minutes[media_type] += item.progress * 60
             elif media_type == Media.BOOK:
-                time_spent_minutes[media_type] += item.progress * 360
+                time_spent_minutes[media_type] += item.progress * 420
             elif media_type == Media.MANGA:
                 time_spent_minutes[media_type] += item.progress * 10
-                
+
         time_spent_minutes['OVERALL'] = sum(time_spent_minutes.values())
         time_spent_hours = {key: round(value / 60, 1) for key, value in time_spent_minutes.items()}
 
         response_data = {
-            'overall': overall_stats,
-            'by_type': per_type_stats,
-            'time_spent_hours': time_spent_hours,
+            'overall': overall_stats, 'by_type': per_type_stats, 'time_spent_hours': time_spent_hours,
         }
         
         return Response(response_data)
@@ -491,9 +479,10 @@ class SyncTMDBView(APIView):
         try:
             account_details = tmdb_service.get_account_details(profile.tmdb_session_id)
             account_id = account_details['id']
-            profile.tmdb_account_id = account_id
+            profile.tmdb_account_id = str(account_id) # Store as string for consistency
             profile.save()
 
+            # Fetch all lists
             movie_watchlist = tmdb_service.get_movie_watchlist(account_id, profile.tmdb_session_id)
             tv_watchlist = tmdb_service.get_tv_watchlist(account_id, profile.tmdb_session_id)
             rated_movies = tmdb_service.get_rated_movies(account_id, profile.tmdb_session_id)
@@ -501,45 +490,43 @@ class SyncTMDBView(APIView):
 
             processed_items = {}
 
-            for item in movie_watchlist + tv_watchlist:
-                item_type = Media.MOVIE if 'title' in item else Media.TV_SHOW
-                processed_items[item['id']] = {'data': item, 'type': item_type, 'status': 'PLANNED', 'score': None}
+            # Process watchlist
+            for item in movie_watchlist: processed_items[f"movie-{item['id']}"] = {'data': item, 'type': Media.MOVIE, 'status': 'PLANNED', 'score': None}
+            for item in tv_watchlist: processed_items[f"tv-{item['id']}"] = {'data': item, 'type': Media.TV_SHOW, 'status': 'PLANNED', 'score': None}
+            
+            # Process rated list (will overwrite watchlist entries if they exist, which is correct)
+            for item in rated_movies: processed_items[f"movie-{item['id']}"] = {'data': item, 'type': Media.MOVIE, 'status': 'COMPLETED', 'score': item.get('rating')}
+            for item in rated_tv: processed_items[f"tv-{item['id']}"] = {'data': item, 'type': Media.TV_SHOW, 'status': 'COMPLETED', 'score': item.get('rating')}
 
-            for item in rated_movies + rated_tv:
-                item_type = Media.MOVIE if 'title' in item else Media.TV_SHOW
-                processed_items[item['id']] = {'data': item, 'type': item_type, 'status': 'COMPLETED', 'score': item.get('rating')}
-
-            # --- KEY CHANGE IS IN THIS LOOP ---
             items_processed_count = 0
-            for tmdb_id, item_info in processed_items.items():
-                item_data = item_info['data']
-                item_type = item_info['type']
-                
-                # Safely skip any item that doesn't have a poster image
-                if not item_data.get('poster_path'):
-                    continue
+            for _unique_id, item_info in processed_items.items():
+                try:
+                    item_data = item_info['data']
+                    item_type = item_info['type']
+                    
+                    if not item_data.get('poster_path') or not item_data.get('id'):
+                        continue
 
-                defaults = {
-                    'primary_title': item_data.get('title') or item_data.get('name'),
-                    'secondary_title': item_data.get('original_title') or item_data.get('original_name'),
-                    'cover_image_url': f"https://image.tmdb.org/t/p/w500{item_data.get('poster_path')}",
-                    'description': item_data.get('overview'),
-                }
-                media_obj, _ = Media.objects.update_or_create(
-                    tmdb_id=tmdb_id, media_type=item_type, defaults=defaults
-                )
-
-                UserMedia.objects.update_or_create(
-                    profile=profile, media=media_obj,
-                    defaults={
-                        'status': item_info['status'],
-                        'score': item_info['score'],
-                        'progress': 0, 
+                    defaults = {
+                        'primary_title': item_data.get('title') or item_data.get('name'),
+                        'secondary_title': item_data.get('original_title') or item_data.get('original_name'),
+                        'cover_image_url': f"https://image.tmdb.org/t/p/w500{item_data.get('poster_path')}",
+                        'description': item_data.get('overview'),
                     }
-                )
-                items_processed_count += 1
+                    media_obj, _ = Media.objects.update_or_create(
+                        tmdb_id=item_data['id'], media_type=item_type, defaults=defaults
+                    )
+
+                    UserMedia.objects.update_or_create(
+                        profile=profile, media=media_obj,
+                        defaults={'status': item_info['status'], 'score': item_info['score'], 'progress': 0}
+                    )
+                    items_processed_count += 1
+                except Exception as item_error:
+                    print(f"Failed to process item {item_data.get('id')}: {item_error}")
+                    continue # Continue to the next item
             
             return Response({"success": f"Sync complete. Processed {items_processed_count} items."}, status=status.HTTP_200_OK)
         except Exception as e:
-            print("!!! TMDB SYNC FAILED:", e)
+            traceback.print_exc()
             return Response({"error": "An error occurred during TMDB sync", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
