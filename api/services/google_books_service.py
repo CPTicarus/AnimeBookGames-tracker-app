@@ -25,3 +25,6 @@ def search_books(query):
         else:
             print(f"Google Books API error: {e}")
         return []
+    
+def get_newest_books():
+    params = {'q': 'subject:fiction', 'key': GOOGLE_BOOKS_API_KEY, 'orderBy': 'newest', 'maxResults': 5}

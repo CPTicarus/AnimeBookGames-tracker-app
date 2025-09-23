@@ -100,6 +100,32 @@ class StatsView(APIView):
         
         return Response(response_data)
 
+class TrendsView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        trends = {}
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Submit all tasks
+            anime_future = executor.submit(anilist_service.get_trending_anime)
+            manga_future = executor.submit(anilist_service.get_trending_manga)
+            movie_future = executor.submit(tmdb_service.get_trending_movies)
+            tv_future = executor.submit(tmdb_service.get_trending_tv)
+            game_future = executor.submit(rawg_service.get_popular_games)
+            book_future = executor.submit(google_books_service.get_newest_books)
+
+            # Collect results
+            trends['ANIME'] = anime_future.result()
+            trends['MANGA'] = manga_future.result()
+            trends['MOVIE'] = movie_future.result()
+            trends['TV_SHOW'] = tv_future.result()
+            trends['GAME'] = game_future.result()
+            trends['BOOK'] = book_future.result()
+
+        # Here we would normally process/format the data, but for now we'll send it raw
+        return Response(trends)
+    
 #------------- media related stuff ------------
 class UserMediaUpdateView(APIView):
     authentication_classes = [TokenAuthentication]

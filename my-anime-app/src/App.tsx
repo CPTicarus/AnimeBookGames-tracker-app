@@ -7,14 +7,14 @@ import LibraryPage from './pages/LibraryPage';
 import ImportPage from './pages/ImportPage';
 import Layout from './components/Layout';
 import StatsPage from './pages/StatsPage';
+import TrendsPage from './pages/TrendsPage';
+
 import './App.css';
 
 function App() {
-  console.log('--- App Component Render ---');
 
   const [appToken, setAppToken] = useState<string | null>(() => {
     const storedToken = localStorage.getItem('app-token');
-    console.log('useState Initializer: Token from localStorage is:', storedToken);
     return storedToken;
   });
 
@@ -22,24 +22,19 @@ function App() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    console.log('useEffect runs ONCE on mount.');
     const token = localStorage.getItem('app-token');
-    console.log('useEffect: Token from localStorage on mount is:', token);
     
     if (token) {
-      console.log('useEffect: Setting auth token for API helper.');
       setAuthToken(token);
     }
     setIsLoading(false);
 
     window.electronAPI.onLoginSuccess((_event, newToken) => {
-      console.log('onLoginSuccess event triggered. New token received.');
       handleLogin(newToken);
     });
   }, []);
 
   const handleLogin = (token: string) => {
-    console.log('handleLogin called. SAVING token to localStorage:', token);
     localStorage.setItem('app-token', token);
     setAuthToken(token);
     setAppToken(token);
@@ -47,14 +42,12 @@ function App() {
   };
 
   const handleLogout = () => {
-    console.log('handleLogout called. REMOVING token from localStorage.');
     localStorage.removeItem('app-token');
     setAuthToken(null);
     setAppToken(null);
     navigate('/');
   };
 
-  console.log('Rendering with appToken state:', appToken);
 
   if (isLoading) {
     return <div>Loading...</div>;
@@ -89,6 +82,7 @@ function App() {
         <Route path="/library" element={<LibraryPage token={appToken!} />} />
         <Route path="/import" element={<ImportPage token={appToken!} />} />
         <Route path="/stats" element={<StatsPage />} /> 
+        <Route path="/trends" element={<TrendsPage />} />
       </Route>
     </Routes>
 

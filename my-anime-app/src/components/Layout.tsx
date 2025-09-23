@@ -19,6 +19,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 
 interface LayoutProps {
   onLogout: () => void;
@@ -36,8 +37,9 @@ function Layout({ onLogout }: LayoutProps) {
 
   const menuItems = [
     { text: 'My Library', icon: <LibraryBooksIcon />, path: '/library' },
+    { text: 'Trends', icon: <TrendingUpIcon />, path: '/trends' },
     { text: 'Import Lists', icon: <CloudDownloadIcon />, path: '/import' },
-    { text: 'Statistics', icon: <QueryStatsIcon />, path: '/stats' }, // <-- ADD THIS 
+    { text: 'Statistics', icon: <QueryStatsIcon />, path: '/stats' },
   ];
 
   return (

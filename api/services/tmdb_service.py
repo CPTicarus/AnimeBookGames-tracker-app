@@ -115,3 +115,19 @@ def get_rated_tv(account_id, session_id):
     response = session.get(url, params=params)
     response.raise_for_status()
     return response.json().get('results', [])
+
+def get_trending_movies():
+    session = _get_resilient_session()
+    url = f"{TMDB_API_URL}/trending/movie/week"
+    params = {'api_key': TMDB_API_KEY, 'language': 'en-US'}
+    response = session.get(url, params=params)
+    response.raise_for_status()
+    return response.json().get('results', [])[:5] # Get top 5
+
+def get_trending_tv():
+    session = _get_resilient_session()
+    url = f"{TMDB_API_URL}/trending/tv/week"
+    params = {'api_key': TMDB_API_KEY, 'language': 'en-US'}
+    response = session.get(url, params=params)
+    response.raise_for_status()
+    return response.json().get('results', [])[:5] # Get top 5
