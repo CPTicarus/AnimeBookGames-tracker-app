@@ -26,6 +26,7 @@ TMDB_REDIRECT_URI = 'http://127.0.0.1:8000/api/auth/tmdb/callback/'
 
 MAL_CLIENT_ID = os.getenv('MAL_CLIENT_ID')
 MAL_REDIRECT_URI = 'http://127.0.0.1:8000/api/auth/mal/callback/'
+MAL_PKCE_METHOD = os.getenv('MAL_PKCE_METHOD', 'S256')  # 'S256' or 'plain'
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 

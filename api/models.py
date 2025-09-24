@@ -21,6 +21,9 @@ class Profile(models.Model):
     mal_access_token = models.TextField(blank=True, null=True)
     mal_refresh_token = models.TextField(blank=True, null=True)
 
+    # Options
+    keep_local_on_sync = models.BooleanField(default=True)
+
     def __str__(self):
         return self.user.username
 

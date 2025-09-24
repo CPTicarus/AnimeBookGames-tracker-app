@@ -25,14 +25,29 @@ def _get_resilient_session():
     return session
 
 def generate_pkce_codes():
-    # Generate valid code_verifier (length 64 is safe)
-    verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b'=').decode('utf-8')
+    # Generate high-entropy code_verifier (>= 43 chars; 64 bytes → ~86 chars)
+    verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).rstrip(b'=').decode('utf-8')
 
     # Compute challenge
-    challenge = hashlib.sha256(verifier.encode('utf-8')).digest()
-    challenge_b64 = base64.urlsafe_b64encode(challenge).rstrip(b'=').decode('utf-8')
+    if settings.MAL_PKCE_METHOD == 'plain':
+        challenge_b64 = verifier
+    else:
+        challenge = hashlib.sha256(verifier.encode('utf-8')).digest()
+        challenge_b64 = base64.urlsafe_b64encode(challenge).rstrip(b'=').decode('utf-8')
 
     return verifier, challenge_b64
+
+
+def generate_code_challenge_from_verifier(code_verifier: str) -> str:
+    """Compute a code_challenge from an existing code_verifier.
+
+    Respects MAL_PKCE_METHOD: returns the verifier for 'plain', or the S256
+    base64url-encoded SHA256 hash for 'S256'.
+    """
+    if settings.MAL_PKCE_METHOD == 'plain':
+        return code_verifier
+    challenge = hashlib.sha256(code_verifier.encode('utf-8')).digest()
+    return base64.urlsafe_b64encode(challenge).rstrip(b'=').decode('utf-8')
 
 
 def get_auth_url(state, code_challenge):
@@ -43,7 +58,7 @@ def get_auth_url(state, code_challenge):
         "state": state,
         "redirect_uri": settings.MAL_REDIRECT_URI,
         "code_challenge": code_challenge,
-        "code_challenge_method": "S256"
+        "code_challenge_method": settings.MAL_PKCE_METHOD,
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
@@ -57,6 +72,10 @@ def exchange_code_for_token(code, code_verifier):
         "code_verifier": code_verifier,
         "redirect_uri": settings.MAL_REDIRECT_URI,
     }
+    # Optionally include client_secret if configured (for Web app type)
+    mal_client_secret = getattr(settings, 'MAL_CLIENT_SECRET', None)
+    if mal_client_secret:
+        payload["client_secret"] = mal_client_secret
     print("MAL token exchange payload:", payload)
     response = session.post(TOKEN_URL, data=payload, timeout=10)
     print("MAL token response:", response.status_code, response.text)

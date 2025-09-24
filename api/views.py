@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 import concurrent.futures
 import traceback
 
@@ -35,6 +35,7 @@ def csrf_token_view(request):
 
 
 class ProfileOptionsView(APIView):
+    authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -286,16 +287,21 @@ class MALLoginView(APIView):
 
     def post(self, request):
         token_key = request.auth.key
-        code_verifier, code_challenge = mal_service.generate_pkce_codes()
 
-        # Store the state and code_verifier for the callback
+        # Always generate a fresh verifier/challenge to ensure pairing with the new auth code
+        code_verifier, code_challenge = mal_service.generate_pkce_codes()
         MALAuthRequest.objects.update_or_create(
             state=token_key,
             defaults={'code_verifier': code_verifier}
-        )       
-        print("Generated verifier:", code_verifier)
+        )
+        print("MAL PKCE: generated new verifier and challenge", {
+            "state": token_key,
+            "code_verifier": code_verifier,
+            "code_challenge": code_challenge,
+        })
 
         auth_url = mal_service.get_auth_url(token_key, code_challenge)
+        print("MAL Auth URL params", {"state": token_key, "code_challenge": code_challenge})
         return Response({"auth_url": auth_url})    
 
 class MALCallbackView(APIView):
@@ -307,6 +313,13 @@ class MALCallbackView(APIView):
             # Retrieve the code_verifier using the state
             auth_request = MALAuthRequest.objects.get(state=state)
             code_verifier = auth_request.code_verifier
+            # For debugging, recompute challenge to ensure consistency with what would have been sent
+            recomputed_challenge = mal_service.generate_code_challenge_from_verifier(code_verifier)
+            print("MAL PKCE: callback recomputed challenge", {
+                "state": state,
+                "code_verifier": code_verifier,
+                "recomputed_challenge": recomputed_challenge,
+            })
 
             # Exchange code for token
             token_data = mal_service.exchange_code_for_token(code, code_verifier)
@@ -338,13 +351,14 @@ class MALCallbackView(APIView):
             return Response({"error": "Failed to link MyAnimeList account.", "details": str(e)}, status=500)
 
 @api_view(["GET"])
+@authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def mal_status(request):
     """
     Return whether the user has linked their MAL account.
     """
-    user = request.user
-    linked = hasattr(user, "malprofile")  # or however you're storing MAL tokens
+    profile = request.user.profile
+    linked = bool(profile.mal_access_token)
     return Response({"linked": linked})
 
 # ==============================================================================
@@ -595,15 +609,28 @@ class SyncMALView(APIView):
                     }
                 )
                 
-                UserMedia.objects.update_or_create(
-                    profile=profile,
-                    media=media_obj,
-                    defaults={
-                        'status': status_map.get(list_status['status'], 'PLANNED'),
-                        'score': list_status['score'],
-                        'progress': list_status.get('num_episodes_watched') or list_status.get('num_chapters_read', 0)
-                    }
-                )
+                if profile.keep_local_on_sync:
+                    # Don't overwrite existing entries; only create if missing
+                    UserMedia.objects.get_or_create(
+                        profile=profile,
+                        media=media_obj,
+                        defaults={
+                            'status': status_map.get(list_status['status'], 'PLANNED'),
+                            'score': list_status['score'],
+                            'progress': list_status.get('num_episodes_watched') or list_status.get('num_chapters_read', 0)
+                        }
+                    )
+                else:
+                    # Overwrite with remote data
+                    UserMedia.objects.update_or_create(
+                        profile=profile,
+                        media=media_obj,
+                        defaults={
+                            'status': status_map.get(list_status['status'], 'PLANNED'),
+                            'score': list_status['score'],
+                            'progress': list_status.get('num_episodes_watched') or list_status.get('num_chapters_read', 0)
+                        }
+                    )
 
             return Response({"success": f"MyAnimeList sync complete. Processed {len(full_list)} items."})
         except Exception as e:
@@ -657,11 +684,18 @@ class SyncAniListView(APIView):
 
                 app_status = status_map.get(entry['status'], 'PLANNED')
 
-                UserMedia.objects.update_or_create(
-                    profile=profile,
-                    media=media_obj,
-                    defaults={'status': app_status, 'score': entry['score'], 'progress': entry['progress']}
-                )
+                if profile.keep_local_on_sync:
+                    UserMedia.objects.get_or_create(
+                        profile=profile,
+                        media=media_obj,
+                        defaults={'status': app_status, 'score': entry['score'], 'progress': entry['progress']}
+                    )
+                else:
+                    UserMedia.objects.update_or_create(
+                        profile=profile,
+                        media=media_obj,
+                        defaults={'status': app_status, 'score': entry['score'], 'progress': entry['progress']}
+                    )
 
             return Response({"success": f"Sync complete. Processed {len(full_list)} items."}, status=status.HTTP_200_OK)
 
@@ -718,11 +752,20 @@ class SyncTMDBView(APIView):
                         tmdb_id=item_data['id'], media_type=item_type, defaults=defaults
                     )
 
-                    UserMedia.objects.update_or_create(
-                        profile=profile, media=media_obj,
-                        defaults={'status': item_info['status'], 'score': item_info['score'], 'progress': 0}
-                    )
-                    items_processed_count += 1
+                    if profile.keep_local_on_sync:
+                        # Only create if missing; do not overwrite existing local data
+                        _, created = UserMedia.objects.get_or_create(
+                            profile=profile, media=media_obj,
+                            defaults={'status': item_info['status'], 'score': item_info['score'], 'progress': 0}
+                        )
+                        if created:
+                            items_processed_count += 1
+                    else:
+                        UserMedia.objects.update_or_create(
+                            profile=profile, media=media_obj,
+                            defaults={'status': item_info['status'], 'score': item_info['score'], 'progress': 0}
+                        )
+                        items_processed_count += 1
                 except Exception as item_error:
                     print(f"Failed to process item {item_data.get('id')}: {item_error}")
                     continue # Continue to the next item

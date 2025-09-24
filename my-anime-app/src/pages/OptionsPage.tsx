@@ -8,7 +8,7 @@ import {
   Paper,
   Divider,
 } from "@mui/material";
-import axios from "axios";
+import api from "../api";
 
 const OptionsPage: React.FC = () => {
   const [options, setOptions] = useState({
@@ -19,8 +19,8 @@ const OptionsPage: React.FC = () => {
 
   // Fetch options from backend
   useEffect(() => {
-    axios
-      .get("/api/options/", { withCredentials: true })
+    api
+      .get("/api/options/")
       .then((res) => setOptions((prev) => ({ ...prev, ...res.data })))
       .catch(() => {});
   }, []);
@@ -31,11 +31,7 @@ const OptionsPage: React.FC = () => {
 
     // Only send if backend knows this field
     if (field === "keep_local_on_sync") {
-      axios.post(
-        "/api/options/",
-        { [field]: newValue },
-        { withCredentials: true }
-      );
+      api.post("/api/options/", { [field]: newValue });
     }
   };
 

@@ -40,7 +40,7 @@ urlpatterns = [
     path('list/update/<int:pk>/', UserMediaUpdateView.as_view(), name='user-media-update'),
     path("list/delete/<int:pk>/", UserMediaDeleteView.as_view(), name="user_media_delete"),
     path('stats/', StatsView.as_view(), name='stats'),
-    path("api/options/", ProfileOptionsView.as_view(), name="profile-options"),
+    path("options/", ProfileOptionsView.as_view(), name="profile-options"),
 
     # ----------------------------------------
     # Third-Party Data Synchronization
