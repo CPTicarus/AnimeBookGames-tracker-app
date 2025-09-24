@@ -3,8 +3,8 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import JSONRenderer
@@ -15,12 +15,17 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import api_view, permission_classes
 import concurrent.futures
 import traceback
-import traceback
-import requests
 
-from .services import anilist_service, tmdb_service, rawg_service, google_books_service, mal_service 
+from .services import (
+    anilist_service, tmdb_service, rawg_service, google_books_service, mal_service
+)
 from .models import Media, Profile, UserMedia, TMDBRequestToken, MALAuthRequest
 from .serializers import UserMediaSerializer, ProfileOptionsSerializer
+
+
+# ==============================================================================
+# General & Utility Views
+# ==============================================================================
 
 def csrf_token_view(request):
     """
@@ -28,34 +33,6 @@ def csrf_token_view(request):
     """
     return JsonResponse({"detail": "CSRF cookie set."})
 
-class RegisterView(APIView):
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        if not username or not password:
-            return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            user = User.objects.create_user(username=username, password=password)
-            # Also create the associated profile
-            Profile.objects.create(user=user)
-            # Create a token for the new user
-            token, _ = Token.objects.get_or_create(user=user)
-            return Response({"success": "User created successfully", "token": token.key}, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
-
-class LoginView(APIView):
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        user = authenticate(username=username, password=password)
-
-        if user:
-            token, _ = Token.objects.get_or_create(user=user)
-            return Response({"token": token.key}, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
 class ProfileOptionsView(APIView):
     permission_classes = [IsAuthenticated]
@@ -168,7 +145,212 @@ class TrendsView(APIView):
         # Here we would normally process/format the data, but for now we'll send it raw
         return Response(trends)
     
-#------------- media related stuff ------------
+# ==============================================================================
+# Authentication Views (Local & Third-Party)
+# ==============================================================================
+
+class RegisterView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        if not username or not password:
+            return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.create_user(username=username, password=password)
+            # Also create the associated profile
+            Profile.objects.create(user=user)
+            # Create a token for the new user
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({"success": "User created successfully", "token": token.key}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
+
+class LoginView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        user = authenticate(username=username, password=password)
+
+        if user:
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({"token": token.key}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST)
+               
+class AniListLoginView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # The user is already authenticated by the classes above.
+        # We can get their token directly.
+        try:
+            token = Token.objects.get(user=request.user)
+        except Token.DoesNotExist:
+            return Response({"error": "Invalid token for user."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Construct the URL with the user's app token as the 'state' parameter
+        auth_url = (
+            f'https://anilist.co/api/v2/oauth/authorize'
+            f'?client_id={settings.ANILIST_CLIENT_ID}'
+            f'&response_type=code'
+            f'&state={token.key}' # Use the token key as the state
+        )
+        return Response({"auth_url": auth_url}, status=status.HTTP_200_OK)
+    
+@method_decorator(csrf_exempt, name='dispatch')
+class AniListCallbackView(APIView):
+    authentication_classes = []
+    permission_classes = []
+    renderer_classes = [JSONRenderer]
+
+    def get(self, request):
+        auth_code = request.query_params.get('code')
+        app_token_key = request.query_params.get('state')
+
+        if not auth_code or not app_token_key:
+            return Response({"error": "Auth code or state missing."}, status=400)
+
+        try:
+            token_obj = Token.objects.get(key=app_token_key)
+            user = token_obj.user
+            profile = user.profile
+
+            anilist_token_data = anilist_service.exchange_code_for_token(auth_code)
+            access_token = anilist_token_data['access_token']
+
+            anilist_profile = anilist_service.get_viewer_profile(access_token)
+            profile.anilist_username = anilist_profile['name']
+            profile.anilist_access_token = access_token
+            profile.save()
+
+            return Response(
+                "<html><body><script>window.close();</script>Login successful, you can close this window.</body></html>",
+                content_type="text/html"
+            )
+
+        except Token.DoesNotExist:
+            return Response({"error": "Invalid state token."}, status=400)
+        except Exception as e:
+            traceback.print_exc()
+            return Response({"error": str(e)}, status=500)
+        
+class TMDBLoginView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            request_token = tmdb_service.create_request_token()
+
+            TMDBRequestToken.objects.create(user=request.user, token=request_token)
+
+            auth_url = f"https://www.themoviedb.org/authenticate/{request_token}?redirect_to={settings.TMDB_REDIRECT_URI}"
+
+            return Response({"auth_url": auth_url})
+        except Exception as e:
+            # THIS WILL PRINT THE REAL ERROR TO YOUR DJANGO TERMINAL
+            print("!!! TMDB AUTH FAILED:", e) 
+            return Response({"error": "Failed to initiate TMDB auth", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class TMDBCallbackView(APIView):
+    def get(self, request):
+        approved_token = request.query_params.get('request_token')
+        if not approved_token:
+            return Response({"error": "Request token not found in callback."})
+
+        try:
+            # Find the user by looking up the token in our database
+            token_entry = TMDBRequestToken.objects.get(token=approved_token)
+            user = token_entry.user
+            profile = user.profile
+
+            session_id = tmdb_service.create_session_id(approved_token)
+
+            profile.tmdb_session_id = session_id
+            profile.save()
+
+            # Clean up the temporary token from the database
+            token_entry.delete()
+
+            return Response({"success": "TMDB account successfully linked!"})
+        except TMDBRequestToken.DoesNotExist:
+            return Response({"error": "Invalid or expired request token. Please try again."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": "Failed to create TMDB session", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class MALLoginView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token_key = request.auth.key
+        code_verifier, code_challenge = mal_service.generate_pkce_codes()
+
+        # Store the state and code_verifier for the callback
+        MALAuthRequest.objects.update_or_create(
+            state=token_key,
+            defaults={'code_verifier': code_verifier}
+        )       
+        print("Generated verifier:", code_verifier)
+
+        auth_url = mal_service.get_auth_url(token_key, code_challenge)
+        return Response({"auth_url": auth_url})    
+
+class MALCallbackView(APIView):
+    def get(self, request):
+        code = request.query_params.get('code')
+        state = request.query_params.get('state')
+
+        try:
+            # Retrieve the code_verifier using the state
+            auth_request = MALAuthRequest.objects.get(state=state)
+            code_verifier = auth_request.code_verifier
+
+            # Exchange code for token
+            token_data = mal_service.exchange_code_for_token(code, code_verifier)
+            access_token = token_data['access_token']
+            refresh_token = token_data['refresh_token']
+            
+            # Get the user associated with the state token
+            user = Token.objects.get(key=state).user
+            profile = user.profile
+            
+            # Get user info and save tokens
+            user_info = mal_service.get_user_info(access_token)
+            profile.mal_username = user_info['name']
+            profile.mal_access_token = access_token
+            profile.mal_refresh_token = refresh_token
+            profile.save()
+
+            # Clean up the temporary auth request
+            auth_request.delete()
+            print("DB verifier:", code_verifier)
+            print("Code received:", code)
+            print("State received:", state)
+            return Response({"success": "MyAnimeList account successfully linked!"})
+
+        except MALAuthRequest.DoesNotExist:
+            return Response({"error": "Invalid or expired state token."}, status=400)
+        except Exception as e:
+            traceback.print_exc()
+            return Response({"error": "Failed to link MyAnimeList account.", "details": str(e)}, status=500)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def mal_status(request):
+    """
+    Return whether the user has linked their MAL account.
+    """
+    user = request.user
+    linked = hasattr(user, "malprofile")  # or however you're storing MAL tokens
+    return Response({"linked": linked})
+
+# ==============================================================================
+# Media & Search Views
+# ==============================================================================
+
 class UserMediaUpdateView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -368,178 +550,10 @@ class UserMediaListView(APIView):
         user_media_list = UserMedia.objects.filter(profile=user_profile).order_by('-score')
         serializer = UserMediaSerializer(user_media_list, many=True)
         return Response(serializer.data)
-#----------------------------------------------
 
-#------------ for imorting lists --------------
-class AniListLoginView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        # The user is already authenticated by the classes above.
-        # We can get their token directly.
-        try:
-            token = Token.objects.get(user=request.user)
-        except Token.DoesNotExist:
-            return Response({"error": "Invalid token for user."}, status=status.HTTP_401_UNAUTHORIZED)
-
-        # Construct the URL with the user's app token as the 'state' parameter
-        auth_url = (
-            f'https://anilist.co/api/v2/oauth/authorize'
-            f'?client_id={settings.ANILIST_CLIENT_ID}'
-            f'&response_type=code'
-            f'&state={token.key}' # Use the token key as the state
-        )
-        return Response({"auth_url": auth_url}, status=status.HTTP_200_OK)
-    
-@method_decorator(csrf_exempt, name='dispatch')
-class AniListCallbackView(APIView):
-    authentication_classes = []
-    permission_classes = []
-    renderer_classes = [JSONRenderer]
-
-    def get(self, request):
-        auth_code = request.query_params.get('code')
-        app_token_key = request.query_params.get('state')
-
-        if not auth_code or not app_token_key:
-            return Response({"error": "Auth code or state missing."}, status=400)
-
-        try:
-            token_obj = Token.objects.get(key=app_token_key)
-            user = token_obj.user
-            profile = user.profile
-
-            anilist_token_data = anilist_service.exchange_code_for_token(auth_code)
-            access_token = anilist_token_data['access_token']
-
-            anilist_profile = anilist_service.get_viewer_profile(access_token)
-            profile.anilist_username = anilist_profile['name']
-            profile.anilist_access_token = access_token
-            profile.save()
-
-            return Response(
-                "<html><body><script>window.close();</script>Login successful, you can close this window.</body></html>",
-                content_type="text/html"
-            )
-
-        except Token.DoesNotExist:
-            return Response({"error": "Invalid state token."}, status=400)
-        except Exception as e:
-            traceback.print_exc()
-            return Response({"error": str(e)}, status=500)
-        
-class TMDBLoginView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        try:
-            request_token = tmdb_service.create_request_token()
-
-            TMDBRequestToken.objects.create(user=request.user, token=request_token)
-
-            auth_url = f"https://www.themoviedb.org/authenticate/{request_token}?redirect_to={settings.TMDB_REDIRECT_URI}"
-
-            return Response({"auth_url": auth_url})
-        except Exception as e:
-            # THIS WILL PRINT THE REAL ERROR TO YOUR DJANGO TERMINAL
-            print("!!! TMDB AUTH FAILED:", e) 
-            return Response({"error": "Failed to initiate TMDB auth", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-class TMDBCallbackView(APIView):
-    def get(self, request):
-        approved_token = request.query_params.get('request_token')
-        if not approved_token:
-            return Response({"error": "Request token not found in callback."})
-
-        try:
-            # Find the user by looking up the token in our database
-            token_entry = TMDBRequestToken.objects.get(token=approved_token)
-            user = token_entry.user
-            profile = user.profile
-
-            session_id = tmdb_service.create_session_id(approved_token)
-
-            profile.tmdb_session_id = session_id
-            profile.save()
-
-            # Clean up the temporary token from the database
-            token_entry.delete()
-
-            return Response({"success": "TMDB account successfully linked!"})
-        except TMDBRequestToken.DoesNotExist:
-            return Response({"error": "Invalid or expired request token. Please try again."}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({"error": "Failed to create TMDB session", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-class MALLoginView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        token_key = request.auth.key
-        code_verifier, code_challenge = mal_service.generate_pkce_codes()
-
-        # Store the state and code_verifier for the callback
-        MALAuthRequest.objects.update_or_create(
-            state=token_key,
-            defaults={'code_verifier': code_verifier}
-        )       
-        print("Generated verifier:", code_verifier)
-
-        auth_url = mal_service.get_auth_url(token_key, code_challenge)
-        return Response({"auth_url": auth_url})
-    
-
-class MALCallbackView(APIView):
-    def get(self, request):
-        code = request.query_params.get('code')
-        state = request.query_params.get('state')
-
-        try:
-            # Retrieve the code_verifier using the state
-            auth_request = MALAuthRequest.objects.get(state=state)
-            code_verifier = auth_request.code_verifier
-
-            # Exchange code for token
-            token_data = mal_service.exchange_code_for_token(code, code_verifier)
-            access_token = token_data['access_token']
-            refresh_token = token_data['refresh_token']
-            
-            # Get the user associated with the state token
-            user = Token.objects.get(key=state).user
-            profile = user.profile
-            
-            # Get user info and save tokens
-            user_info = mal_service.get_user_info(access_token)
-            profile.mal_username = user_info['name']
-            profile.mal_access_token = access_token
-            profile.mal_refresh_token = refresh_token
-            profile.save()
-
-            # Clean up the temporary auth request
-            auth_request.delete()
-            print("DB verifier:", code_verifier)
-            print("Code received:", code)
-            print("State received:", state)
-            return Response({"success": "MyAnimeList account successfully linked!"})
-
-        except MALAuthRequest.DoesNotExist:
-            return Response({"error": "Invalid or expired state token."}, status=400)
-        except Exception as e:
-            traceback.print_exc()
-            return Response({"error": "Failed to link MyAnimeList account.", "details": str(e)}, status=500)
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def mal_status(request):
-    """
-    Return whether the user has linked their MAL account.
-    """
-    user = request.user
-    linked = hasattr(user, "malprofile")  # or however you're storing MAL tokens
-    return Response({"linked": linked})
+# ==============================================================================
+# Synchronization Views (Importing Lists from External APIs)
+# ==============================================================================
 
 class SyncMALView(APIView):
     authentication_classes = [TokenAuthentication]
@@ -595,7 +609,6 @@ class SyncMALView(APIView):
         except Exception as e:
             traceback.print_exc()
             return Response({"error": "An error occurred during MAL sync.", "details": str(e)}, status=500)
-#-------------------------------------------------
 
 class SyncAniListView(APIView):
     authentication_classes = [TokenAuthentication]
@@ -718,3 +731,4 @@ class SyncTMDBView(APIView):
         except Exception as e:
             traceback.print_exc()
             return Response({"error": "An error occurred during TMDB sync", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        

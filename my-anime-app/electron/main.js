@@ -56,6 +56,14 @@ app.whenReady().then(() => {
     }, 500);
   }
 
+  ipcMain.on('open-login-window', (event, url) => {
+    createAuthWindow(
+      url,
+      'http://127.0.0.1:8000/api/auth/callback/',
+      'anilist-link-success'
+    );
+  });
+
   ipcMain.on('open-tmdb-login-window', (event, url) => {
     createAuthWindow(
       url,

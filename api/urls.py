@@ -1,26 +1,11 @@
 from django.urls import path
 from .views import (
-    MediaSearchView,
-    AniListLoginView,
-    AniListCallbackView,
-    UserMediaListView,
-    csrf_token_view,
-    mal_status,
-    RegisterView,
-    LoginView,
-    SyncAniListView,
-    UserMediaAddView,
-    UserMediaUpdateView,
-    TMDBLoginView,
-    TMDBCallbackView,
-    SyncTMDBView,
-    StatsView,
-    UserMediaDeleteView,
-    TrendsView,
-    SyncMALView,
-    MALLoginView,
-    MALCallbackView,
-    ProfileOptionsView,
+    MediaSearchView, AniListLoginView, AniListCallbackView, UserMediaListView,
+    csrf_token_view, mal_status,
+    RegisterView, LoginView, SyncAniListView, UserMediaAddView,
+    UserMediaUpdateView, TMDBLoginView, TMDBCallbackView, SyncTMDBView, 
+    StatsView, UserMediaDeleteView, TrendsView, SyncMALView,
+    MALLoginView, MALCallbackView, ProfileOptionsView,
 )
 
 urlpatterns = [
