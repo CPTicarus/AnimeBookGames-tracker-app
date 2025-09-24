@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -12,7 +12,7 @@ app.whenReady().then(() => {
 
   function createWindow() {
     mainWindow = new BrowserWindow({
-      width: 1200, // A bit wider for better UI experience
+      width: 1200,
       height: 800,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
@@ -21,10 +21,8 @@ app.whenReady().then(() => {
     });
 
     mainWindow.loadURL('http://localhost:5173');
-    // mainWindow.webContents.openDevTools(); // Uncomment to debug
   }
 
-  // --- REUSABLE AUTH WINDOW HANDLER ---
   function createAuthWindow(authUrl, callbackUrlPrefix, successEventName) {
     const authWindow = new BrowserWindow({
       width: 600,
@@ -34,7 +32,6 @@ app.whenReady().then(() => {
       show: true,
       webPreferences: {
         session: persistentSession,
-        // For security, don't enable nodeIntegration in untrusted windows
       },
     });
 
@@ -50,25 +47,14 @@ app.whenReady().then(() => {
         const currentURL = authWindow.webContents.getURL();
         if (currentURL.startsWith(callbackUrlPrefix)) {
           clearInterval(interval);
-          // Send a generic success message back to the frontend
           mainWindow.webContents.send(successEventName);
-          // Close the window after a short delay
           setTimeout(() => authWindow.close(), 500);
         }
       } catch (error) {
-        // Window may have been closed manually
-        // console.log(error);
+        console.log(error);
       }
     }, 500);
   }
-
-  ipcMain.on('open-login-window', (event, url) => {
-    createAuthWindow(
-      url,
-      'http://127.0.0.1:8000/api/auth/callback/',
-      'anilist-link-success'
-    );
-  });
 
   ipcMain.on('open-tmdb-login-window', (event, url) => {
     createAuthWindow(
@@ -79,15 +65,9 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on('open-mal-login-window', (event, url) => {
-    createAuthWindow(
-      url,
-      'http://127.0.0.1:8000/api/auth/mal/callback/',
-      'mal-link-success'
-    );
+    shell.openExternal(url);
   });
 
-
-  // --- APP LIFECYCLE ---
   createWindow();
 
   app.on('activate', () => {

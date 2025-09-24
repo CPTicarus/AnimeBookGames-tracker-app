@@ -37,7 +37,7 @@ class Media(models.Model):
 
     media_type = models.CharField(max_length=7, choices=MEDIA_TYPE_CHOICES)
     
-    # Core information
+    #-------------- Core information -----------
     primary_title = models.CharField(max_length=255)
     # An optional secondary title (e.g., Romaji name, original title, subtitle).
     secondary_title = models.CharField(max_length=255, blank=True, null=True)
@@ -45,7 +45,12 @@ class Media(models.Model):
     description = models.TextField(blank=True, null=True)
     cover_image_url = models.URLField(blank=True, null=True)
     length = models.IntegerField(null=True, blank=True)
-
+    #-------------------------------------------
+    
+    #------------- Options ---------------------
+    keep_local_on_sync = models.BooleanField(default=True)
+    keep_user_login = models.BooleanField(default=True)
+    
     # IDs from external services to prevent duplicates and for syncing
     anilist_id = models.IntegerField(unique=True, blank=True, null=True)
     tmdb_id = models.IntegerField(blank=True, null=True) 

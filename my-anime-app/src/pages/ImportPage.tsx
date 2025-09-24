@@ -20,6 +20,7 @@ import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 function ImportPage({ token }: { token: string }) {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'info' | 'success' | 'error'>('info');
+  const [malLinked, setMalLinked] = useState(false);
 
   useEffect(() => {
     // Listen specifically for the AniList link event
@@ -33,12 +34,27 @@ function ImportPage({ token }: { token: string }) {
       setMessage('TMDB account successfully linked! You can now sync.');
     });
 
-    window.electronAPI.onMalLinkSuccess(() => {
-      setMessageType('success');
-      setMessage('MyAnimeList account successfully linked! You can now sync.');
-    });
   }, []);
 
+  useEffect(() => {
+    if (!malLinked) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get('/api/auth/mal/status/');
+        if (res.data.linked) {
+          setMessageType('success');
+          setMessage('MyAnimeList account successfully linked! You can now sync.');
+          setMalLinked(false); // stop polling
+          clearInterval(interval);
+        }
+      } catch (err) {
+        console.error('Failed to check MAL status', err);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [malLinked]);
 
   const handleAniListConnect = async () => {
     setMessageType('info');
@@ -101,9 +117,9 @@ function ImportPage({ token }: { token: string }) {
     try {
       const response = await api.post('/api/auth/mal/login/');
       const authUrl = response.data.auth_url;
-      // You can reuse the generic login window opener
-      window.electronAPI.openMalLoginWindow(authUrl);
-      setMessage('Please complete the MyAnimeList login in the popup window.');
+      window.electronAPI.openMalLoginWindow(authUrl); // opens system browser
+      setMessage('Please complete the MyAnimeList login in your browser...');
+      setMalLinked(true); // start polling
     } catch (err) {
       setMessageType('error');
       setMessage('Could not connect to MyAnimeList.');

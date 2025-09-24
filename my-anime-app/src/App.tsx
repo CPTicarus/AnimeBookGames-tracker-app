@@ -8,6 +8,7 @@ import ImportPage from './pages/ImportPage';
 import Layout from './components/Layout';
 import StatsPage from './pages/StatsPage';
 import TrendsPage from './pages/TrendsPage';
+import OptionsPage from "./pages/OptionsPage";
 
 import './App.css';
 
@@ -83,6 +84,7 @@ function App() {
         <Route path="/import" element={<ImportPage token={appToken!} />} />
         <Route path="/stats" element={<StatsPage />} /> 
         <Route path="/trends" element={<TrendsPage />} />
+        <Route path="/options" element={<OptionsPage />} />
       </Route>
     </Routes>
 

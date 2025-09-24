@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
+from rest_framework.decorators import api_view, permission_classes
 import concurrent.futures
 import traceback
 import traceback
@@ -19,7 +20,7 @@ import requests
 
 from .services import anilist_service, tmdb_service, rawg_service, google_books_service, mal_service 
 from .models import Media, Profile, UserMedia, TMDBRequestToken, MALAuthRequest
-from .serializers import UserMediaSerializer
+from .serializers import UserMediaSerializer, ProfileOptionsSerializer
 
 def csrf_token_view(request):
     """
@@ -56,6 +57,21 @@ class LoginView(APIView):
         else:
             return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
+class ProfileOptionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        profile = request.user.profile
+        return Response(ProfileOptionsSerializer(profile).data)
+
+    def post(self, request):
+        profile = request.user.profile
+        serializer = ProfileOptionsSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+    
 class StatsView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -470,9 +486,11 @@ class MALLoginView(APIView):
             state=token_key,
             defaults={'code_verifier': code_verifier}
         )       
-        
+        print("Generated verifier:", code_verifier)
+
         auth_url = mal_service.get_auth_url(token_key, code_challenge)
         return Response({"auth_url": auth_url})
+    
 
 class MALCallbackView(APIView):
     def get(self, request):
@@ -502,7 +520,9 @@ class MALCallbackView(APIView):
 
             # Clean up the temporary auth request
             auth_request.delete()
-
+            print("DB verifier:", code_verifier)
+            print("Code received:", code)
+            print("State received:", state)
             return Response({"success": "MyAnimeList account successfully linked!"})
 
         except MALAuthRequest.DoesNotExist:
@@ -511,6 +531,15 @@ class MALCallbackView(APIView):
             traceback.print_exc()
             return Response({"error": "Failed to link MyAnimeList account.", "details": str(e)}, status=500)
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def mal_status(request):
+    """
+    Return whether the user has linked their MAL account.
+    """
+    user = request.user
+    linked = hasattr(user, "malprofile")  # or however you're storing MAL tokens
+    return Response({"linked": linked})
 
 class SyncMALView(APIView):
     authentication_classes = [TokenAuthentication]

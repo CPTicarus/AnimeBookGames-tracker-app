@@ -40,6 +40,7 @@ function Layout({ onLogout }: LayoutProps) {
     { text: 'Trends', icon: <TrendingUpIcon />, path: '/trends' },
     { text: 'Import Lists', icon: <CloudDownloadIcon />, path: '/import' },
     { text: 'Statistics', icon: <QueryStatsIcon />, path: '/stats' },
+    { text: 'Options', icon: <MenuIcon />, path: '/options' },
   ];
 
   return (

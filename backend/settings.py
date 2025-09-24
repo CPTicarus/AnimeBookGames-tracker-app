@@ -25,8 +25,7 @@ TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 TMDB_REDIRECT_URI = 'http://127.0.0.1:8000/api/auth/tmdb/callback/'
 
 MAL_CLIENT_ID = os.getenv('MAL_CLIENT_ID')
-MAL_CLIENT_SECRET = os.getenv('MAL_CLIENT_SECRET')
-MAL_REDIRECT_URI = os.getenv('MAL_REDIRECT_URI')
+MAL_REDIRECT_URI = 'http://127.0.0.1:8000/api/auth/mal/callback/'
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -142,7 +141,7 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # The address of your Vite React frontend
+    "http://localhost:5173",  # The address of Vite React frontend
 ]
 # This allows your Django backend to share cookies with your frontend
 CORS_ALLOW_CREDENTIALS = True 
