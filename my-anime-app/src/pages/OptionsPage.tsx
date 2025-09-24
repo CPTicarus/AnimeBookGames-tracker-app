@@ -14,7 +14,7 @@ const OptionsPage: React.FC = () => {
   const [options, setOptions] = useState({
     keep_local_on_sync: true,
     keep_user_logged_in: true,
-    dark_mode: false,
+    dark_mode: true,
   });
 
   // Fetch options from backend
@@ -30,8 +30,13 @@ const OptionsPage: React.FC = () => {
     setOptions({ ...options, [field]: newValue });
 
     // Only send if backend knows this field
-    if (field === "keep_local_on_sync") {
-      api.post("/api/options/", { [field]: newValue });
+    if (field === "keep_local_on_sync" || field === "dark_mode") {
+      api.post("/api/options/", { [field]: newValue }).catch(() => {});
+    }
+
+    // Immediately reflect dark mode changes app-wide
+    if (field === "dark_mode") {
+      window.dispatchEvent(new CustomEvent('theme-change', { detail: newValue }));
     }
   };
 

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { setAuthToken } from './api';
+import api, { setAuthToken } from './api';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import LibraryPage from './pages/LibraryPage';
@@ -20,6 +22,7 @@ function App() {
   });
 
   const [isLoading, setIsLoading] = useState(true);
+  const [darkMode, setDarkMode] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -33,6 +36,19 @@ function App() {
     window.electronAPI.onLoginSuccess((_event, newToken) => {
       handleLogin(newToken);
     });
+
+    // Fetch user options to initialize theme mode
+    if (token) {
+      api.get('/api/options/').then(res => {
+        if (typeof res.data.dark_mode === 'boolean') setDarkMode(res.data.dark_mode);
+      }).catch(() => {});
+    }
+
+    const onThemeChange = (e: any) => {
+      setDarkMode(Boolean(e.detail));
+    };
+    window.addEventListener('theme-change', onThemeChange);
+    return () => window.removeEventListener('theme-change', onThemeChange);
   }, []);
 
   const handleLogin = (token: string) => {
@@ -54,8 +70,21 @@ function App() {
     return <div>Loading...</div>;
   }
 
+  const muiTheme = createTheme({
+    palette: {
+      mode: darkMode ? 'dark' : 'light',
+      primary: { main: '#FFA726' },
+      background: {
+        default: darkMode ? '#121212' : '#ffffff',
+        paper: darkMode ? '#1E1E1E' : '#f9f9f9',
+      },
+    },
+  });
+
   return (
-    <Routes>
+    <ThemeProvider theme={muiTheme}>
+      <CssBaseline />
+      <Routes>
       {/* If logged in → go to library, else show login */}
       <Route
         path="/"
@@ -87,6 +116,7 @@ function App() {
         <Route path="/options" element={<OptionsPage />} />
       </Route>
     </Routes>
+    </ThemeProvider>
 
   );
 }

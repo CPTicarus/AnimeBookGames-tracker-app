@@ -3,8 +3,9 @@
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
-  background-color: #121212; /* dark background */
-  color: #eee;               /* light text */
+  /* Let MUI theme control colors for dark/light mode */
+  background-color: transparent;
+  color: inherit;
   font-family: 'Inter', sans-serif;
   min-height: 100vh;
   display: flex;
