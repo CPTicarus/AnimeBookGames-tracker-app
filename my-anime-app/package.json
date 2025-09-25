@@ -47,7 +47,8 @@
     "appId": "com.mycompany.myanimeapp",
     "files": [
       "dist/**",
-      "electron/**"
+      "electron/**",
+      "package.json"
     ],
     "extraResources": [
       {
@@ -55,8 +56,11 @@
         "to": "backend/run_backend.exe"
       }
     ],
+    "directories": {
+      "buildResources": "build"
+    },
     "win": {
-      "target": "nsis" 
+      "target": "nsis"
     }
   }
 }

@@ -10,6 +10,7 @@ import {
   Chip, CircularProgress, Divider, ToggleButton, ToggleButtonGroup,
   Grid, Paper, Slider, FormLabel
 } from '@mui/material';
+import { Checkbox, FormControlLabel, FormGroup } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import MovieIcon from '@mui/icons-material/Movie';
 import TvIcon from '@mui/icons-material/Tv';
@@ -71,12 +72,27 @@ function LibraryPage({ token }: LibraryPageProps) {
   // --- Custom Lists State ---
   const [customLists, setCustomLists] = useState<CustomList[]>([]);
   const [customListsLoading, setCustomListsLoading] = useState(true);
+  // Visibility state for status groups and custom lists
+  const [visibleStatuses, setVisibleStatuses] = useState<Record<string, boolean>>(() => ({
+    IN_PROGRESS: true,
+    COMPLETED: true,
+    PAUSED: true,
+    PLANNED: true,
+    DROPPED: true,
+  }));
+  const [visibleCustomLists, setVisibleCustomLists] = useState<Record<number, boolean>>({});
   // Fetch custom lists
   const fetchCustomLists = async () => {
     setCustomListsLoading(true);
     try {
       const response = await api.get('/api/custom-lists/');
       setCustomLists(response.data);
+      // Initialize visibility for any new custom lists (default: visible)
+      const vis: Record<number, boolean> = { ...visibleCustomLists };
+      response.data.forEach((l: CustomList) => {
+        if (vis[l.id] === undefined) vis[l.id] = true;
+      });
+      setVisibleCustomLists(vis);
     } catch (err) {
       console.error('Failed to fetch custom lists', err);
     } finally {
@@ -277,6 +293,26 @@ function LibraryPage({ token }: LibraryPageProps) {
           size="small"
         />
         <Box>
+          <FormLabel sx={{ mt: 1 }}>Visible Lists</FormLabel>
+          <FormGroup>
+            {['IN_PROGRESS','COMPLETED','PAUSED','PLANNED','DROPPED'].map((s) => (
+              <FormControlLabel
+                key={s}
+                control={<Checkbox checked={!!visibleStatuses[s]} onChange={() => setVisibleStatuses(prev => ({ ...prev, [s]: !prev[s]}))} />}
+                label={s.toLowerCase().replace('_',' ')}
+              />
+            ))}
+            {/* Custom lists toggles (show up after they are loaded) */}
+            {customLists.map(list => (
+              <FormControlLabel
+                key={`cl-${list.id}`}
+                control={<Checkbox checked={!!visibleCustomLists[list.id]} onChange={() => setVisibleCustomLists(prev => ({ ...prev, [list.id]: !prev[list.id]}))} />}
+                label={`List: ${list.name}`}
+              />
+            ))}
+          </FormGroup>
+        </Box>
+        <Box>
             <FormLabel>Media Type</FormLabel>
             <ToggleButtonGroup orientation="vertical" value={filterTypes} onChange={handleFilterTypeChange} fullWidth>
                 <ToggleButton value="ANIME"><AnimationIcon sx={{mr: 1}}/> </ToggleButton>
@@ -403,7 +439,7 @@ function LibraryPage({ token }: LibraryPageProps) {
           Your Library
         </Typography>
       
-  {libraryLoading ? (
+        {libraryLoading ? (
           <Box display="flex" justifyContent="center" alignItems="center" sx={{ mt: 4 }}>
             <CircularProgress color="primary" />
           </Box>
@@ -411,58 +447,60 @@ function LibraryPage({ token }: LibraryPageProps) {
           <Box>
             {/* Status Accordions */}
             {sortedGroupKeys.map((status) => (
-              <Accordion key={status} defaultExpanded={status === 'WATCHING' || status === 'COMPLETED'}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Chip
-                    label={`${status.toLowerCase().replace('_', ' ')} (${groupedMedia[status].length})`}
-                    sx={{ bgcolor: getStatusColor(status), color: '#fff', fontWeight: 'bold' }}
-                  />
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Stack spacing={2}>
-                    {groupedMedia[status].map((item) => (
-                      <Card
-                        key={item.id}
-                        onClick={() => handleOpenModal(item)}
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          p: 1,
-                          borderRadius: 2,
-                          transition: '0.2s',
-                          '&:hover': {
-                            cursor: 'pointer',
-                            transform: 'scale(1.02)',
-                            boxShadow: 4,
-                            borderColor: 'primary.main',
-                          },
-                        }}
-                      >
-                        <CardMedia
-                          component="img"
-                          sx={{ width: 60, height: 90, borderRadius: 1, flexShrink: 0 }}
-                          image={item.media.cover_image_url || ''}
-                        />
-                        <Box sx={{ ml: 2, flexGrow: 1 }}>
-                          <Typography variant="h6">
-                            {item.media.primary_title || item.media.secondary_title}
-                          </Typography>
-                          {item.media.secondary_title && (
-                            <Typography variant="body2" color="text.secondary">
-                              {item.media.secondary_title}
+              visibleStatuses[status] ? (
+                <Accordion key={status} defaultExpanded={status === 'WATCHING' || status === 'COMPLETED'}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Chip
+                      label={`${status.toLowerCase().replace('_', ' ')} (${groupedMedia[status].length})`}
+                      sx={{ bgcolor: getStatusColor(status), color: '#fff', fontWeight: 'bold' }}
+                    />
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Stack spacing={2}>
+                      {groupedMedia[status].map((item) => (
+                        <Card
+                          key={item.id}
+                          onClick={() => handleOpenModal(item)}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            p: 1,
+                            borderRadius: 2,
+                            transition: '0.2s',
+                            '&:hover': {
+                              cursor: 'pointer',
+                              transform: 'scale(1.02)',
+                              boxShadow: 4,
+                              borderColor: 'primary.main',
+                            },
+                          }}
+                        >
+                          <CardMedia
+                            component="img"
+                            sx={{ width: 60, height: 90, borderRadius: 1, flexShrink: 0 }}
+                            image={item.media.cover_image_url || ''}
+                          />
+                          <Box sx={{ ml: 2, flexGrow: 1 }}>
+                            <Typography variant="h6">
+                              {item.media.primary_title || item.media.secondary_title}
+                            </Typography>
+                            {item.media.secondary_title && (
+                              <Typography variant="body2" color="text.secondary">
+                                {item.media.secondary_title}
+                              </Typography>
+                            )}
+                          </Box>
+                          {item.score && (
+                            <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                              {item.score.toFixed(1)}
                             </Typography>
                           )}
-                        </Box>
-                        {item.score && (
-                          <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                            {item.score.toFixed(1)}
-                          </Typography>
-                        )}
-                      </Card>
-                    ))}
-                  </Stack>
-                </AccordionDetails>
-              </Accordion>
+                        </Card>
+                      ))}
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
+              ) : null
             ))}
 
             {/* Custom Lists Accordions */}
@@ -479,6 +517,7 @@ function LibraryPage({ token }: LibraryPageProps) {
                 <Typography color="text.secondary">No custom lists found.</Typography>
               ) : (
                 customLists.map((list) => (
+                  visibleCustomLists[list.id] ? (
                   <Accordion key={list.id}>
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                       <Chip
@@ -535,6 +574,7 @@ function LibraryPage({ token }: LibraryPageProps) {
                       </Stack>
                     </AccordionDetails>
                   </Accordion>
+                  ) : null
                 ))
               )
             )}

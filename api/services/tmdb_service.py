@@ -43,7 +43,6 @@ def search_tv_shows(query):
     params = {
         'api_key': TMDB_API_KEY,
         'query': query,
-        'without_genres': '16',
         'language': 'en-US'
     }
     try:

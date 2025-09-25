@@ -86,60 +86,60 @@ function CustomListPage() {
           <Button onClick={handleCreate} variant="contained">Create</Button>
         </DialogActions>
       </Dialog>
-  <Dialog open={!!addDialogOpen} onClose={() => setAddDialogOpen(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Add Entry to List</DialogTitle>
-        <DialogContent>
-            <Autocomplete
-            options={library}
-            getOptionLabel={(option) =>
-                option.media.primary_title +
-                (option.media.secondary_title ? ` (${option.media.secondary_title})` : '')
-            }
-            onChange={(_e, v) => setSelectedEntry(v)}
-            renderOption={(props, option) => (
-                <li {...props} key={option.id}>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    {option.media.cover_image_url && (
-                    <img
-                        src={option.media.cover_image_url}
-                        alt={option.media.primary_title}
-                        style={{
-                        width: 40,
-                        height: 60,
-                        objectFit: 'cover',
-                        borderRadius: 4,
-                        marginRight: 10,
-                        }}
-                    />
-                    )}
-                    <Box>
-                    <Typography variant="body1">
-                        {option.media.primary_title}
-                    </Typography>
-                    {option.media.secondary_title && (
-                        <Typography variant="body2" color="text.secondary">
-                        {option.media.secondary_title}
+        <Dialog open={!!addDialogOpen} onClose={() => setAddDialogOpen(null)} fullWidth maxWidth="sm">
+            <DialogTitle>Add Entry to List</DialogTitle>
+            <DialogContent>
+                <Autocomplete
+                options={library}
+                getOptionLabel={(option) =>
+                    option.media.primary_title +
+                    (option.media.secondary_title ? ` (${option.media.secondary_title})` : '')
+                }
+                onChange={(_e, v) => setSelectedEntry(v)}
+                renderOption={(props, option) => (
+                    <li {...props} key={option.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {option.media.cover_image_url && (
+                        <img
+                            src={option.media.cover_image_url}
+                            alt={option.media.primary_title}
+                            style={{
+                            width: 40,
+                            height: 60,
+                            objectFit: 'cover',
+                            borderRadius: 4,
+                            marginRight: 10,
+                            }}
+                        />
+                        )}
+                        <Box>
+                        <Typography variant="body1">
+                            {option.media.primary_title}
                         </Typography>
-                    )}
-                    <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ fontStyle: 'italic' }}
-                    >
-                    </Typography>
+                        {option.media.secondary_title && (
+                            <Typography variant="body2" color="text.secondary">
+                            {option.media.secondary_title}
+                            </Typography>
+                        )}
+                        <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontStyle: 'italic' }}
+                        >
+                        </Typography>
+                        </Box>
                     </Box>
-                </Box>
-                </li>
-            )}
-            renderInput={(params) => (
-                <TextField {...params} label="Select entry from your library" />
-            )}
-            />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddDialogOpen(null)}>Cancel</Button>
-          <Button onClick={() => handleAddEntry(addDialogOpen!)} variant="contained" disabled={!selectedEntry}>Add</Button>
-        </DialogActions>
+                    </li>
+                )}
+                renderInput={(params) => (
+                    <TextField {...params} label="Select entry from your library" />
+                )}
+                />
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={() => setAddDialogOpen(null)}>Cancel</Button>
+                <Button onClick={() => handleAddEntry(addDialogOpen!)} variant="contained" disabled={!selectedEntry}>Add</Button>
+            </DialogActions>
       </Dialog>
     </Box>
   );
