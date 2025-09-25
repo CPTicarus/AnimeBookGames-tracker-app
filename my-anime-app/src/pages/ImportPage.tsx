@@ -9,7 +9,12 @@ import {
   CardContent,
   Stack,
   Divider,
-  Alert
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField
 } from '@mui/material';
 import MovieIcon from '@mui/icons-material/Movie';
 import SyncIcon from '@mui/icons-material/Sync';
@@ -22,6 +27,7 @@ function ImportPage({ token }: { token: string }) {
   const [messageType, setMessageType] = useState<'info' | 'success' | 'error'>('info');
   const [malLinked, setMalLinked] = useState(false);
 
+
   useEffect(() => {
     // Listen specifically for the AniList link event
     window.electronAPI.onAnilistLinkSuccess(() => {
@@ -32,6 +38,11 @@ function ImportPage({ token }: { token: string }) {
     window.electronAPI.onTmdbLinkSuccess(() => {
       setMessageType('success');
       setMessage('TMDB account successfully linked! You can now sync.');
+    });
+
+    window.electronAPI.onSteamLinkSuccess(() => {
+      setMessageType('success');
+      setMessage('Steam account successfully linked! You can now import your library.');
     });
 
   }, []);
@@ -127,6 +138,21 @@ function ImportPage({ token }: { token: string }) {
     }
   };
 
+  const handleSteamConnect = async () => {
+    setMessageType('info');
+    setMessage('Getting Steam login URL...');
+    try {
+      const response = await api.get('/api/auth/steam/connect/');
+      const authUrl = response.data.auth_url;
+      window.electronAPI.openSteamLoginWindow(authUrl);
+      setMessage('Please complete the Steam login in the popup window.');
+    } catch (err) {
+      setMessageType('error');
+      setMessage('Could not connect to Steam.');
+      console.error(err);
+    }
+  };
+
   const handleMALSync = async () => {
     setMessageType('info');
     setMessage('Syncing your MyAnimeList library... This can take a moment.');
@@ -137,6 +163,38 @@ function ImportPage({ token }: { token: string }) {
     } catch (err: any) {
       setMessageType('error');
       setMessage(err.response?.data?.error || 'Failed to sync MyAnimeList.');
+    }
+  };
+
+  // const handleSteamConnect = async () => {
+  //   setMessageType('info');
+  //   setMessage('Opening Steam login...');
+  //   try {
+  //     const response = await api.get('/api/auth/steam/connect/');
+  //     if (response.data.auth_url) {
+  //       window.electronAPI.openSteamLoginWindow(response.data.auth_url);
+  //       setMessage('Please complete the login in the Steam window...');
+  //     } else {
+  //       setMessageType('error');
+  //       setMessage('Could not get Steam login URL.');
+  //     }
+  //   } catch (err) {
+  //     setMessageType('error');
+  //     setMessage('Could not connect to Steam.');
+  //     console.error('Steam connection error:', err);
+  //   }
+  // };
+
+  const handleSteamSync = async () => {
+    setMessageType('info');
+    setMessage('Importing your Steam library... This can take a moment.');
+    try {
+      const response = await api.post('/api/sync/steam/');
+      setMessageType('success');
+      setMessage(response.data.success);
+    } catch (err: any) {
+      setMessageType('error');
+      setMessage(err.response?.data?.error || 'Failed to import Steam library.');
     }
   };
 
@@ -228,6 +286,33 @@ function ImportPage({ token }: { token: string }) {
             </Stack>
           </CardContent>
         </Card>
+
+        {/* Steam Card */}
+        <Card variant="outlined" sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <SyncIcon sx={{ color: '#171a21' }} /> Steam Games
+            </Typography>
+            <Stack direction="row" spacing={2}>
+              <Button
+                variant="contained"
+                startIcon={<LinkIcon />}
+                onClick={handleSteamConnect}
+                sx={{ backgroundColor: '#171a21', '&:hover': { backgroundColor: '#2a475e' } }}
+              >
+                Connect Steam Account
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<SyncIcon />}
+                onClick={handleSteamSync}
+                sx={{ color: '#171a21', borderColor: '#171a21' }}
+              >
+                Import Steam Library
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
       </Stack>
 
       {/* Status Message */}
@@ -236,6 +321,8 @@ function ImportPage({ token }: { token: string }) {
           {message}
         </Alert>
       )}
+
+
     </Box>
   );
 }

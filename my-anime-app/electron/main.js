@@ -25,13 +25,15 @@ app.whenReady().then(() => {
 
   function createAuthWindow(authUrl, callbackUrlPrefix, successEventName) {
     const authWindow = new BrowserWindow({
-      width: 600,
+      width: 800,
       height: 800,
       parent: mainWindow,
       modal: true,
       show: true,
       webPreferences: {
         session: persistentSession,
+        nodeIntegration: false,
+        contextIsolation: true
       },
     });
 
@@ -74,6 +76,14 @@ app.whenReady().then(() => {
 
   ipcMain.on('open-mal-login-window', (event, url) => {
     shell.openExternal(url);
+  });
+
+  ipcMain.on('open-steam-login-window', (event, url) => {
+    createAuthWindow(
+      url,
+      'http://127.0.0.1:8000/api/auth/steam/callback/',
+      'steam-link-success'
+    );
   });
 
   createWindow();

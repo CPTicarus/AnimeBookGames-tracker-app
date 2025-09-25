@@ -15,4 +15,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // MAL functions
   openMalLoginWindow: (url) => ipcRenderer.send('open-mal-login-window', url),
   onMalLinkSuccess: (callback) => ipcRenderer.on('mal-link-success', callback),
+
+  // Steam functions
+  openSteamLoginWindow: (url) => ipcRenderer.send('open-steam-login-window', url),
+  onSteamLinkSuccess: (callback) => ipcRenderer.on('steam-link-success', callback),
+  onSteamLinkSuccess: (callback) => ipcRenderer.on('steam-link-success', callback),
 });

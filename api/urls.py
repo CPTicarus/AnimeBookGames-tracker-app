@@ -6,6 +6,7 @@ from .views import (
     UserMediaUpdateView, TMDBLoginView, TMDBCallbackView, SyncTMDBView, 
     StatsView, UserMediaDeleteView, TrendsView, SyncMALView,
     MALLoginView, MALCallbackView, ProfileOptionsView,
+    SteamConnectView, SteamCallbackView, SteamSyncView,
 )
 from rest_framework.routers import DefaultRouter
 from .custom_lists_views import CustomListViewSet, CustomListEntryViewSet
@@ -47,6 +48,11 @@ urlpatterns = [
     # ----------------------------------------
     # Third-Party Data Synchronization
     # ----------------------------------------
+    
+    # Steam Integration
+    path('auth/steam/connect/', SteamConnectView.as_view(), name='steam-connect'),
+    path('auth/steam/callback/', SteamCallbackView.as_view(), name='steam-callback'),
+    path('sync/steam/', SteamSyncView.as_view(), name='steam-sync'),
 
     path('sync/anilist/', SyncAniListView.as_view(), name='sync-anilist'),
     path('sync/mal/', SyncMALView.as_view(), name='sync-mal'),

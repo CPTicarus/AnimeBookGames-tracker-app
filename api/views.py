@@ -24,6 +24,129 @@ from .serializers import UserMediaSerializer, ProfileOptionsSerializer
 
 
 # ==============================================================================
+# Steam Integration Views
+# ==============================================================================
+
+class SteamConnectView(APIView):
+    authentication_classes = [ExpiringTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            # Get the user's token to use as state
+            token = Token.objects.get(user=request.user)
+
+            # Steam OpenID URL with state parameter
+            login_url = (
+                "https://steamcommunity.com/openid/login"
+                "?openid.ns=http://specs.openid.net/auth/2.0"
+                "&openid.mode=checkid_setup"
+                f"&openid.return_to=http://127.0.0.1:8000/api/auth/steam/callback/?state={token.key}"
+                "&openid.realm=http://127.0.0.1:8000"
+                "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select"
+                "&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select"
+            )
+            return Response({"auth_url": login_url})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class SteamCallbackView(APIView):
+    authentication_classes = []  # No authentication required for the callback
+    permission_classes = []      # No permissions required for the callback
+
+    def get(self, request):
+        try:
+            # Get claimed ID from Steam's response
+            claimed_id = request.GET.get('openid.claimed_id', '')
+            if not claimed_id:
+                return Response({"error": "Steam authentication failed"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get the app token from the state parameter
+            app_token = request.GET.get('state', '')
+            if not app_token:
+                return Response({"error": "No authentication state provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get the user from the token
+            try:
+                token = Token.objects.get(key=app_token)
+                user = token.user
+                profile = user.profile
+            except Token.DoesNotExist:
+                return Response({"error": "Invalid authentication token"}, status=status.HTTP_401_UNAUTHORIZED)
+
+            # Extract Steam ID from the claimed ID URL
+            steam_id = claimed_id.split('/')[-1]
+            
+            # Update the user's profile with Steam ID
+            profile.steam_id = steam_id
+            
+            # Get additional Steam profile info
+            try:
+                steam_user_response = steam_service.get_user_profile(steam_id)
+                if steam_user_response:
+                    profile.steam_username = steam_user_response.get('personaname', '')
+            except Exception as e:
+                print(f"Error getting Steam profile: {e}")
+            
+            profile.save()
+
+            # Return success response that will trigger the window to close
+            return Response(
+                "<html><body><script>window.close();</script>Steam account linked successfully!</body></html>",
+                content_type="text/html"
+            )
+        except Exception as e:
+            print(f"Steam callback error: {e}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class SteamSyncView(APIView):
+    authentication_classes = [ExpiringTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        profile = request.user.profile
+        if not profile.steam_id:
+            return Response({"error": "Steam account not connected"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            games = steam_service.get_user_library(profile.steam_id)
+            games_added = 0
+
+            for game in games:
+                # Create or update the game in our database
+                media, created = Media.objects.get_or_create(
+                    media_type=Media.GAME,
+                    primary_title=game['name'],
+                    defaults={
+                        'cover_image_url': game['header_image'],
+                        'description': game.get('description', ''),
+                    }
+                )
+
+                # Create or update user's game entry with playtime
+                user_media, created = UserMedia.objects.get_or_create(
+                    profile=profile,
+                    media=media,
+                    defaults={
+                        'status': UserMedia.IN_PROGRESS if game['playtime_hours'] > 0 else UserMedia.PLANNED,
+                        'progress': int(game['playtime_hours'] * 60)  # Convert hours to minutes
+                    }
+                )
+
+                if not created:
+                    # Update existing entry's playtime
+                    user_media.progress = int(game['playtime_hours'] * 60)
+                    user_media.save()
+
+                games_added += 1
+
+            return Response({
+                "success": f"Successfully imported {games_added} games from Steam library"
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ==============================================================================
 # General & Utility Views
 # ==============================================================================
 

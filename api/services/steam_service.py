@@ -2,10 +2,94 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import os
+from typing import Dict, List, Optional
 
 STEAM_API_KEY = os.getenv('STEAM_API_KEY')
 STEAM_API_URL = 'https://api.steampowered.com'
 STEAM_STORE_URL = 'https://store.steampowered.com/api'
+
+def get_steam_id_from_username(username: str) -> Optional[str]:
+    """Convert Steam username/vanity URL to Steam ID."""
+    if not STEAM_API_KEY:
+        raise ValueError("Steam API key not configured")
+        
+    session = _get_resilient_session()
+    url = f"{STEAM_API_URL}/ISteamUser/ResolveVanityURL/v1/"
+    
+    try:
+        response = session.get(url, params={
+            'key': STEAM_API_KEY,
+            'vanityurl': username
+        })
+        response.raise_for_status()
+        data = response.json()
+        
+        if data['response']['success'] == 1:
+            return data['response']['steamid']
+        return None
+    except Exception as e:
+        print(f"Error resolving Steam vanity URL: {e}")
+        return None
+
+def get_user_library(steam_id: str) -> List[Dict]:
+    """Get user's Steam library with playtime information."""
+    if not STEAM_API_KEY:
+        raise ValueError("Steam API key not configured")
+        
+    session = _get_resilient_session()
+    url = f"{STEAM_API_URL}/IPlayerService/GetOwnedGames/v1/"
+    
+    try:
+        response = session.get(url, params={
+            'key': STEAM_API_KEY,
+            'steamid': steam_id,
+            'include_appinfo': 1,
+            'include_played_free_games': 1
+        })
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'response' not in data or 'games' not in data['response']:
+            return []
+            
+        games = []
+        for game in data['response']['games']:
+            # Convert playtime from minutes to hours and round to 1 decimal
+            playtime = round(game.get('playtime_forever', 0) / 60, 1)
+            
+            # Get additional game details from store API
+            try:
+                details_response = session.get(
+                    f"{STEAM_STORE_URL}/appdetails",
+                    params={'appids': game['appid'], 'cc': 'us', 'l': 'english'}
+                )
+                details_response.raise_for_status()
+                details = details_response.json()
+                
+                if details and details.get(str(game['appid']), {}).get('success'):
+                    app_data = details[str(game['appid'])]['data']
+                    games.append({
+                        'appid': game['appid'],
+                        'name': game['name'],
+                        'playtime_hours': playtime,
+                        'header_image': app_data.get('header_image', ''),
+                        'description': app_data.get('short_description', '')
+                    })
+            except Exception as e:
+                print(f"Error fetching details for game {game['appid']}: {e}")
+                # Add basic info even if detailed fetch fails
+                games.append({
+                    'appid': game['appid'],
+                    'name': game['name'],
+                    'playtime_hours': playtime,
+                    'header_image': '',
+                    'description': ''
+                })
+                
+        return games
+    except Exception as e:
+        print(f"Error fetching Steam library: {e}")
+        return []
 
 def _get_resilient_session():
     """Creates a requests session with automatic retries."""
@@ -14,6 +98,29 @@ def _get_resilient_session():
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("https://", adapter)
     return session
+
+def get_user_profile(steam_id: str):
+    """Get a Steam user's profile information."""
+    if not STEAM_API_KEY:
+        raise ValueError("Steam API key not configured")
+    
+    session = _get_resilient_session()
+    url = f"{STEAM_API_URL}/ISteamUser/GetPlayerSummaries/v2/"
+    
+    try:
+        response = session.get(url, params={
+            'key': STEAM_API_KEY,
+            'steamids': steam_id
+        })
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get('response', {}).get('players'):
+            return data['response']['players'][0]
+        return None
+    except Exception as e:
+        print(f"Error fetching Steam profile: {e}")
+        return None
 
 def search_games(query):
     """Searches for games on Steam."""

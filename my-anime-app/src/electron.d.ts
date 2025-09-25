@@ -16,6 +16,11 @@ declare global {
       // MyAnimeList Functions 
       openMalLoginWindow: (url: string) => void;
       onMalLinkSuccess: (callback: () => void) => void;
+
+      // Steam Functions
+      openSteamLoginWindow: (url: string) => void;
+      onSteamLinkSuccess: (callback: () => void) => void;
+
     };
   }
 }

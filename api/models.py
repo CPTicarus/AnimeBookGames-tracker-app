@@ -20,6 +20,10 @@ class Profile(models.Model):
     mal_username = models.CharField(max_length=100, blank=True, null=True)
     mal_access_token = models.TextField(blank=True, null=True)
     mal_refresh_token = models.TextField(blank=True, null=True)
+    
+    # Fields for Steam integration
+    steam_id = models.CharField(max_length=100, blank=True, null=True)
+    steam_username = models.CharField(max_length=100, blank=True, null=True)
 
     # Options
     keep_local_on_sync = models.BooleanField(default=True)
