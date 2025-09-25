@@ -121,7 +121,7 @@ def get_trending_movies():
     params = {'api_key': TMDB_API_KEY, 'language': 'en-US'}
     response = session.get(url, params=params)
     response.raise_for_status()
-    return response.json().get('results', [])[:15] # Get top 5
+    return response.json().get('results', [])[:15] 
 
 def get_trending_tv():
     session = _get_resilient_session()
@@ -129,4 +129,4 @@ def get_trending_tv():
     params = {'api_key': TMDB_API_KEY, 'language': 'en-US'}
     response = session.get(url, params=params)
     response.raise_for_status()
-    return response.json().get('results', [])[:15] # Get top 5
+    return response.json().get('results', [])[:15] 

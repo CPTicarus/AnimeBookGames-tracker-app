@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { SteamGame, convertSteamToMedia } from './types/steam';
 
 const api = axios.create({
   baseURL: 'http://127.0.0.1:8000',
@@ -11,6 +12,14 @@ export const setAuthToken = (token: string | null) => {
   } else {
     delete api.defaults.headers.common['Authorization'];
   }
+};
+
+// Function to transform Steam game data
+export const transformSteamData = (response: any) => {
+  if (response.data && Array.isArray(response.data)) {
+    return response.data.map((game: SteamGame) => convertSteamToMedia(game));
+  }
+  return [];
 };
 
 export default api;

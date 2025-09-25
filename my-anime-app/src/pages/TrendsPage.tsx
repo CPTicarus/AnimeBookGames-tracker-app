@@ -4,8 +4,9 @@ import api from '../api';
 import { Box, Typography, Card, CardMedia, CircularProgress,
     Dialog, DialogTitle, DialogContent, DialogActions, Button,
     TextField, Select, MenuItem, FormControl, InputLabel, Stack,
-    Divider
+    Divider, Paper, Grid, IconButton
  } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 // Extend TrendItem so we know the media type
 interface TrendItem {
@@ -16,29 +17,63 @@ interface TrendItem {
   api_source: string;
 }
 
-const TrendRow = ({ title, items, onClick }: { title: string, items: TrendItem[], onClick: (item: TrendItem) => void }) => (
-  <Box sx={{ mb: 4 }}>
-    <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold' }}>{title}</Typography>
-    <Box sx={{ display: 'flex', overflowX: 'auto', gap: 2, pb: 2 }}>
-      {items.map(item => (
-        <Card
-          key={item.id}
-          sx={{ flex: '0 0 150px', cursor: 'pointer', '&:hover': { transform: 'scale(1.05)', boxShadow: 4 } }}
-          onClick={() => onClick(item)}
-        >
-          <CardMedia
-            component="img" sx={{ aspectRatio: '2/3' }}
-            image={item.cover_image_url || 'https://via.placeholder.com/150x225?text=No+Image'}
-          />
-        </Card>
-      ))}
-    </Box>
-  </Box>
-);
+const TrendRow = ({
+  title,
+  items,
+  onClick,
+  expanded,
+  onToggle,
+}: {
+  title: string,
+  items: TrendItem[],
+  onClick: (item: TrendItem) => void,
+  expanded: boolean,
+  onToggle: () => void,
+}) => {
+  const visibleCount = expanded ? 15 : 6;
+  const visibleItems = items.slice(0, visibleCount);
+
+  return (
+    <Paper sx={{ mb: 4, p: 2, borderRadius: 3 }} elevation={2}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>{title}</Typography>
+        <IconButton onClick={onToggle} aria-label={expanded ? 'Collapse' : 'Expand'} size="small">
+          <ExpandMoreIcon sx={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+        </IconButton>
+      </Box>
+      <Box sx={{
+        display: 'grid',
+        gap: 2,
+        gridTemplateColumns: {
+          xs: 'repeat(2, 1fr)',
+          sm: 'repeat(3, 1fr)',
+          md: 'repeat(4, 1fr)',
+          lg: 'repeat(6, 1fr)'
+        }
+      }}>
+        {visibleItems.map(item => (
+          <Box key={item.id}>
+            <Card
+              sx={{ cursor: 'pointer', borderRadius: 2, overflow: 'hidden', transition: 'transform .15s, box-shadow .15s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 } }}
+              onClick={() => onClick(item)}
+            >
+              <CardMedia
+                component="img"
+                sx={{ aspectRatio: '2/3' }}
+                image={item.cover_image_url || 'https://via.placeholder.com/300x450?text=No+Image'}
+              />
+            </Card>
+          </Box>
+        ))}
+      </Box>
+    </Paper>
+  );
+};
 
 function TrendsPage() {
   const [trends, setTrends] = useState<Record<string, TrendItem[]>>({});
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // --- Modal state ---
   const [selectedItem, setSelectedItem] = useState<TrendItem | null>(null);
@@ -90,11 +125,11 @@ function TrendsPage() {
         }
         if (response.data.GAME) {
           normalizedData.GAME = response.data.GAME.map((i: any) => ({
-            id: i.id,
+            id: i.appid,
             title: i.name,
-            cover_image_url: i.background_image,
+            cover_image_url: i.header_image,
             media_type: "GAME",
-            api_source: "RAWG",
+            api_source: "STEAM",
           }));
         }
         if (response.data.BOOK) {
@@ -116,6 +151,10 @@ function TrendsPage() {
     };
     fetchTrends();
   }, []);
+
+  const toggleSection = (type: string) => {
+    setExpanded(prev => ({ ...prev, [type]: !prev[type] }));
+  };
 
   const handleAdd = async () => {
     if (!selectedItem) return;
@@ -147,8 +186,16 @@ function TrendsPage() {
       </Typography>
       {Object.keys(trends).length > 0 ? (
         Object.entries(trends).map(([type, items]) => (
-          items.length > 0 &&
-          <TrendRow key={type} title={`Trending ${type.replace('_', ' ')}`} items={items} onClick={setSelectedItem} />
+          items.length > 0 && (
+            <TrendRow
+              key={type}
+              title={`Trending ${type.replace('_', ' ')}`}
+              items={items}
+              onClick={setSelectedItem}
+              expanded={Boolean(expanded[type])}
+              onToggle={() => toggleSection(type)}
+            />
+          )
         ))
       ) : (
         <Typography>Could not load any trending data at this time.</Typography>

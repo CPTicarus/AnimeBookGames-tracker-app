@@ -293,6 +293,17 @@ function LibraryPage({ token }: LibraryPageProps) {
           size="small"
         />
         <Box>
+            <FormLabel>Media Type</FormLabel>
+            <ToggleButtonGroup orientation="vertical" value={filterTypes} onChange={handleFilterTypeChange} fullWidth>
+                <ToggleButton value="ANIME"><AnimationIcon sx={{mr: 1}}/> </ToggleButton>
+                <ToggleButton value="MANGA"><AutoStoriesIcon sx={{mr: 1}}/> </ToggleButton>
+                <ToggleButton value="MOVIE"><MovieIcon sx={{mr: 1}}/> </ToggleButton>
+                <ToggleButton value="TV_SHOW"><TvIcon sx={{mr: 1}}/> </ToggleButton>
+                <ToggleButton value="GAME"><SportsEsportsIcon sx={{mr: 1}}/> </ToggleButton>
+                <ToggleButton value="BOOK"><MenuBookIcon sx={{mr: 1}}/> </ToggleButton>
+            </ToggleButtonGroup>
+        </Box>
+        <Box>
           <FormLabel sx={{ mt: 1 }}>Visible Lists</FormLabel>
           <FormGroup>
             {['IN_PROGRESS','COMPLETED','PAUSED','PLANNED','DROPPED'].map((s) => (
@@ -311,17 +322,6 @@ function LibraryPage({ token }: LibraryPageProps) {
               />
             ))}
           </FormGroup>
-        </Box>
-        <Box>
-            <FormLabel>Media Type</FormLabel>
-            <ToggleButtonGroup orientation="vertical" value={filterTypes} onChange={handleFilterTypeChange} fullWidth>
-                <ToggleButton value="ANIME"><AnimationIcon sx={{mr: 1}}/> </ToggleButton>
-                <ToggleButton value="MANGA"><AutoStoriesIcon sx={{mr: 1}}/> </ToggleButton>
-                <ToggleButton value="MOVIE"><MovieIcon sx={{mr: 1}}/> </ToggleButton>
-                <ToggleButton value="TV_SHOW"><TvIcon sx={{mr: 1}}/> </ToggleButton>
-                <ToggleButton value="GAME"><SportsEsportsIcon sx={{mr: 1}}/> </ToggleButton>
-                <ToggleButton value="BOOK"><MenuBookIcon sx={{mr: 1}}/> </ToggleButton>
-            </ToggleButtonGroup>
         </Box>
         <Box>
             <FormLabel>Score Range</FormLabel>

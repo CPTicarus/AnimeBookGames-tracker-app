@@ -17,7 +17,7 @@ import concurrent.futures
 import traceback
 
 from .services import (
-    anilist_service, tmdb_service, rawg_service, google_books_service, mal_service
+    anilist_service, tmdb_service, steam_service, google_books_service, mal_service, rawg_service
 )
 from .models import Media, Profile, UserMedia, TMDBRequestToken, MALAuthRequest
 from .serializers import UserMediaSerializer, ProfileOptionsSerializer
@@ -148,7 +148,8 @@ class TrendsView(APIView):
             manga_future = executor.submit(anilist_service.get_trending_manga)
             movie_future = executor.submit(tmdb_service.get_trending_movies)
             tv_future = executor.submit(tmdb_service.get_trending_tv)
-            game_future = executor.submit(rawg_service.get_popular_games)
+            #game_future = executor.submit(rawg_service.get_popular_games)
+            game_future = executor.submit(steam_service.get_popular_games)
             book_future = executor.submit(google_books_service.get_newest_books)
 
             # Collect results
@@ -156,7 +157,16 @@ class TrendsView(APIView):
             trends['MANGA'] = manga_future.result()
             trends['MOVIE'] = movie_future.result()
             trends['TV_SHOW'] = tv_future.result()
-            trends['GAME'] = game_future.result()
+            games = game_future.result()
+            trends['GAME'] = [
+                {
+                    'id': game['appid'],
+                    'name': game['name'],
+                    'header_image': game['header_image']
+                }
+                for game in games
+                if all(key in game for key in ['appid', 'name', 'header_image'])
+            ]
             trends['BOOK'] = book_future.result()
 
         # Here we would normally process/format the data, but for now we'll send it raw
@@ -435,7 +445,8 @@ class MediaSearchView(APIView):
             if 'TV_SHOW' in sources:
                 future_to_source[executor.submit(tmdb_service.search_tv_shows, query)] = 'TV_SHOW'
             if 'GAME' in sources:
-                future_to_source[executor.submit(rawg_service.search_games, query)] = 'GAME'
+                # future_to_source[executor.submit(rawg_service.search_games, query)] = 'GAME'
+                future_to_source[executor.submit(steam_service.search_games, query)] = 'GAME'
             if 'BOOK' in sources:
                 future_to_source[executor.submit(google_books_service.search_books, query)] = 'BOOK'
 
@@ -470,12 +481,20 @@ class MediaSearchView(APIView):
                             })
                     elif source_type == 'GAME':
                         for item in data:
-                            if not item.get('background_image'): continue
+                            if not item.get('tiny_image'): continue
                             results.append({
-                                "api_source": "RAWG", "api_id": item['id'], "primary_title": item['name'],
+                                "api_source": "STEAM", "api_id": item['id'], "primary_title": item['name'],
                                 "secondary_title": None, "media_type": "GAME",
-                                "cover_image_url": item['background_image']
+                                "cover_image_url": item['tiny_image']
                             })
+                    # elif source_type == 'GAME':
+                    #     for item in data:
+                    #         if not item.get('background_image'): continue
+                    #         results.append({
+                    #             "api_source": "RAWG", "api_id": item['id'], "primary_title": item['name'],
+                    #             "secondary_title": None, "media_type": "GAME",
+                    #             "cover_image_url": item['background_image']
+                    #         })
                     elif source_type == 'BOOK':
                         for item in data:
                             volume_info = item.get('volumeInfo', {})

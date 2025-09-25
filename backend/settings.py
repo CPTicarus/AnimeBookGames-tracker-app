@@ -17,6 +17,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+STEAM_API_KEY = os.getenv('STEAM_API_KEY')
+
 ANILIST_CLIENT_ID = os.getenv('ANILIST_CLIENT_ID')
 ANILIST_CLIENT_SECRET = os.getenv('ANILIST_CLIENT_SECRET')
 ANILIST_REDIRECT_URI = 'http://127.0.0.1:8000/api/auth/callback/'
