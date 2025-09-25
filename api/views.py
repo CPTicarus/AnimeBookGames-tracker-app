@@ -128,14 +128,17 @@ class SteamSyncView(APIView):
                     profile=profile,
                     media=media,
                     defaults={
-                        'status': UserMedia.IN_PROGRESS if game['playtime_hours'] > 0 else UserMedia.PLANNED,
-                        'progress': int(game['playtime_hours'] * 60)  # Convert hours to minutes
+                        'status': UserMedia.IN_PROGRESS if game['playtime_minutes'] > 0 else UserMedia.PLANNED,
+                        'progress': game['playtime_minutes']  # Already in minutes from Steam
                     }
                 )
 
                 if not created:
                     # Update existing entry's playtime
-                    user_media.progress = int(game['playtime_hours'] * 60)
+                    user_media.progress = game['playtime_minutes']
+                    # Update status if needed
+                    if game['playtime_minutes'] > 0 and user_media.status == UserMedia.PLANNED:
+                        user_media.status = UserMedia.IN_PROGRESS
                     user_media.save()
 
                 games_added += 1
@@ -195,6 +198,10 @@ class StatsView(APIView):
 
     def get(self, request):
         profile = request.user.profile
+        
+        # Get all items for time calculation
+        all_items = UserMedia.objects.filter(profile=profile)
+        # Get only completed items with scores for score calculation
         completed_list = UserMedia.objects.filter(profile=profile, status='COMPLETED', score__isnull=False)
 
         overall_stats = {'total_completed': completed_list.count(), 'weighted_average_score': 0}
@@ -209,16 +216,37 @@ class StatsView(APIView):
         type_weighted_scores = {}
         type_weights = {}
 
+        # First calculate time spent from all items
+        for item in all_items:
+            if item.progress <= 0:  # Skip items with no progress
+                continue
+                
+            media_type = item.media.media_type
+            
+            # Calculate time in minutes for this item
+            minutes = 0
+            if media_type == Media.ANIME: minutes = item.progress * 25
+            elif media_type == Media.MOVIE: minutes = item.progress * 120
+            elif media_type == Media.TV_SHOW: minutes = item.progress * (20 if item.progress > 100 else 45)
+            elif media_type == Media.GAME: minutes = item.progress  # Already in minutes from Steam
+            elif media_type == Media.BOOK: minutes = item.progress * 360
+            elif media_type == Media.MANGA: minutes = item.progress * 10
+            
+            # Add to total time if there's any progress
+            if minutes > 0:
+                time_spent_minutes[media_type] += minutes
+
+        # Then calculate scores from completed items
         for item in completed_list:
             media_type = item.media.media_type
             score = item.score
             
-            # 1. Calculate the weight for this item (time in minutes)
+            # Calculate weight for scoring (keeping original logic)
             weight = 0
             if media_type == Media.ANIME: weight = item.progress * 25
             elif media_type == Media.MOVIE: weight = item.progress * 120
             elif media_type == Media.TV_SHOW: weight = item.progress * (20 if item.progress > 100 else 45)
-            elif media_type == Media.GAME: weight = item.progress * 60
+            elif media_type == Media.GAME: weight = item.progress  # Already in minutes from Steam
             elif media_type == Media.BOOK: weight = item.progress * 360
             elif media_type == Media.MANGA: weight = item.progress * 10
             

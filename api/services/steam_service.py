@@ -54,8 +54,8 @@ def get_user_library(steam_id: str) -> List[Dict]:
             
         games = []
         for game in data['response']['games']:
-            # Convert playtime from minutes to hours and round to 1 decimal
-            playtime = round(game.get('playtime_forever', 0) / 60, 1)
+            # Get playtime in minutes directly from Steam
+            playtime_minutes = game.get('playtime_forever', 0)
             
             # Get additional game details from store API
             try:
@@ -71,7 +71,7 @@ def get_user_library(steam_id: str) -> List[Dict]:
                     games.append({
                         'appid': game['appid'],
                         'name': game['name'],
-                        'playtime_hours': playtime,
+                        'playtime_minutes': playtime_minutes,
                         'header_image': app_data.get('header_image', ''),
                         'description': app_data.get('short_description', '')
                     })
@@ -81,7 +81,7 @@ def get_user_library(steam_id: str) -> List[Dict]:
                 games.append({
                     'appid': game['appid'],
                     'name': game['name'],
-                    'playtime_hours': playtime,
+                    'playtime_minutes': playtime_minutes,
                     'header_image': '',
                     'description': ''
                 })
