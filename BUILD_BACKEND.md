@@ -1,4 +1,4 @@
-This repository includes a Python/Django backend and an Electron + Vite frontend.
+# This repository includes a Python/Django backend and an Electron + Vite + React frontend.
 
 This document explains how to build the backend into a Windows executable and
 embed it into the Electron app so `electron-builder` packages it into the
