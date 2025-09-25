@@ -17,4 +17,4 @@ class UserMediaSerializer(serializers.ModelSerializer):
 class ProfileOptionsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ["keep_local_on_sync", "dark_mode"]
+        fields = ["keep_local_on_sync", "dark_mode", "keep_user_logged_in"]

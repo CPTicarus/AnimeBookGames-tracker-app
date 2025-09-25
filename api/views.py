@@ -11,7 +11,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
-from rest_framework.authentication import TokenAuthentication
+from .authentication import ExpiringTokenAuthentication
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 import concurrent.futures
 import traceback
@@ -35,7 +35,7 @@ def csrf_token_view(request):
 
 
 class ProfileOptionsView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -46,12 +46,28 @@ class ProfileOptionsView(APIView):
         profile = request.user.profile
         serializer = ProfileOptionsSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
+            # Save the preference
             serializer.save()
+
+            # If the user explicitly turned OFF "keep_user_logged_in", revoke tokens
+            if 'keep_user_logged_in' in request.data:
+                try:
+                    keep_val = request.data.get('keep_user_logged_in')
+                    # normalize possible string values from form submissions
+                    if isinstance(keep_val, str):
+                        keep_val = keep_val.lower() in ('1', 'true', 'yes', 'on')
+                    if keep_val is False:
+                        # Delete all tokens for this user to force re-login
+                        Token.objects.filter(user=request.user).delete()
+                except Exception:
+                    # Don't block the response on token deletion errors
+                    pass
+
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
     
 class StatsView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -121,7 +137,7 @@ class StatsView(APIView):
         return Response(response_data)
 
 class TrendsView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -180,7 +196,7 @@ class LoginView(APIView):
             return Response({"error": "Invalid Credentials"}, status=status.HTTP_400_BAD_REQUEST)
                
 class AniListLoginView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -238,7 +254,7 @@ class AniListCallbackView(APIView):
             return Response({"error": str(e)}, status=500)
         
 class TMDBLoginView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -282,7 +298,7 @@ class TMDBCallbackView(APIView):
             return Response({"error": "Failed to create TMDB session", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class MALLoginView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -351,7 +367,7 @@ class MALCallbackView(APIView):
             return Response({"error": "Failed to link MyAnimeList account.", "details": str(e)}, status=500)
 
 @api_view(["GET"])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([ExpiringTokenAuthentication])
 @permission_classes([IsAuthenticated])
 def mal_status(request):
     """
@@ -366,7 +382,7 @@ def mal_status(request):
 # ==============================================================================
 
 class UserMediaUpdateView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
@@ -395,7 +411,7 @@ class UserMediaUpdateView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class MediaSearchView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -480,7 +496,7 @@ class MediaSearchView(APIView):
         return Response(results)
 
 class UserMediaAddView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -536,7 +552,7 @@ class UserMediaAddView(APIView):
             return Response({"error": "An error occurred.", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class UserMediaDeleteView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, pk):
@@ -555,8 +571,8 @@ class UserMediaDeleteView(APIView):
             return Response({"error": "Item not found in your list."}, status=status.HTTP_404_NOT_FOUND)
         
 class UserMediaListView(APIView):
-    # Tell this view to use TokenAuthentication instead of SessionAuthentication
-    authentication_classes = [TokenAuthentication]
+    # Tell this view to use ExpiringTokenAuthentication instead of SessionAuthentication
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -570,7 +586,7 @@ class UserMediaListView(APIView):
 # ==============================================================================
 
 class SyncMALView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
@@ -638,7 +654,7 @@ class SyncMALView(APIView):
             return Response({"error": "An error occurred during MAL sync.", "details": str(e)}, status=500)
 
 class SyncAniListView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -703,7 +719,7 @@ class SyncAniListView(APIView):
             return Response({"error": "An error occurred during sync", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class SyncTMDBView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):

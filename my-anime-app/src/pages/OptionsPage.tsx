@@ -29,8 +29,8 @@ const OptionsPage: React.FC = () => {
     const newValue = !options[field];
     setOptions({ ...options, [field]: newValue });
 
-    // Only send if backend knows this field
-    if (field === "keep_local_on_sync" || field === "dark_mode") {
+    // Send to backend for all known option fields
+    if (field === "keep_local_on_sync" || field === "dark_mode" || field === "keep_user_logged_in") {
       api.post("/api/options/", { [field]: newValue }).catch(() => {});
     }
 
@@ -75,7 +75,8 @@ const OptionsPage: React.FC = () => {
           label="Keep user logged in"
         />
         <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-          (Placeholder) Prevents auto-logout between sessions.
+          The sessions will be short live and you will need to log in again
+          after some time.
         </Typography>
       </Paper>
 
