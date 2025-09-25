@@ -238,9 +238,9 @@ function LibraryPage({ token }: LibraryPageProps) {
   }, [inputValue, sources, debouncedSearch]);
 
   return (
-    <Box sx={{ display: "flex", height: "100vh", p: 2 }}>
+    <Box sx={{ display: "flex", height: "100%", p: 2, bgcolor: 'background.default' }}>
       {/* === LEFT SIDEBAR === */}
-      <Paper sx={{ width: 240, p: 2, display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+      <Paper sx={{ width: 240, p: 2, display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0, alignSelf: 'flex-start' }}>
         <Typography variant="h6">Filters</Typography>
         <TextField label="Filter by name..." 
           value={filterText} 
