@@ -27,4 +27,4 @@ def search_books(query):
         return []
     
 def get_newest_books():
-    params = {'q': 'subject:fiction', 'key': GOOGLE_BOOKS_API_KEY, 'orderBy': 'newest', 'maxResults': 5}
+    params = {'q': 'subject:fiction', 'key': GOOGLE_BOOKS_API_KEY, 'orderBy': 'newest', 'maxResults': 15}

@@ -89,7 +89,7 @@ class StatsView(APIView):
             # 2. Add this weight to our totals
             time_spent_minutes[media_type] += weight
             total_weight += weight
-            total_weighted_score += score * weight
+            total_weighted_score += score * weight #type: ignore
 
             # Initialize per-type dictionaries
             if media_type not in per_type_stats:
@@ -98,13 +98,13 @@ class StatsView(APIView):
                 type_weights[media_type] = 0
             
             # Per-type calculation
-            type_weighted_scores[media_type] += score * weight
+            type_weighted_scores[media_type] += score * weight #type: ignore
             type_weights[media_type] += weight
             per_type_stats[media_type]['total_completed'] += 1
 
         # Finalize averages
         if total_weight > 0:
-            overall_stats['weighted_average_score'] = round(total_weighted_score / total_weight, 2)
+            overall_stats['weighted_average_score'] = round(total_weighted_score / total_weight, 2) #type: ignore
         
         for media_type, weighted_score in type_weighted_scores.items():
             if type_weights.get(media_type, 0) > 0:
@@ -265,7 +265,7 @@ class TMDBCallbackView(APIView):
             # Find the user by looking up the token in our database
             token_entry = TMDBRequestToken.objects.get(token=approved_token)
             user = token_entry.user
-            profile = user.profile
+            profile = user.profile # type: ignore[attr-defined]
 
             session_id = tmdb_service.create_session_id(approved_token)
 
@@ -767,7 +767,7 @@ class SyncTMDBView(APIView):
                         )
                         items_processed_count += 1
                 except Exception as item_error:
-                    print(f"Failed to process item {item_data.get('id')}: {item_error}")
+                    print(f"Failed to process item {item_data.get('id')}: {item_error}") #type: ignore
                     continue # Continue to the next item
             
             return Response({"success": f"Sync complete. Processed {items_processed_count} items."}, status=status.HTTP_200_OK)

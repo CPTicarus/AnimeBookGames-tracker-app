@@ -176,18 +176,25 @@ def fetch_full_user_manga_list(access_token):
 def get_trending_anime():
     transport = ResilientRequestsHTTPTransport(url=ANILIST_API_URL)
     client = Client(transport=transport, fetch_schema_from_transport=False) 
-    query = gql(''' { Page(page: 1, perPage: 5) { 
+    query = gql(''' { Page(page: 1, perPage: 15) { 
                 media(sort: TRENDING_DESC, type: ANIME) { 
-                id, 
-                title { romaji, english }, 
-                coverImage { large } 
-                } } } ''')
+                    id, 
+                    title { romaji, english }, 
+                    coverImage { large } 
+                } 
+            } } ''')
     result = client.execute(query)
     return result.get('Page', {}).get('media', [])
 
 def get_trending_manga():
     transport = ResilientRequestsHTTPTransport(url=ANILIST_API_URL)
     client = Client(transport=transport, fetch_schema_from_transport=False) 
-    query = gql(''' { Page(page: 1, perPage: 5) { media(sort: TRENDING_DESC, type: MANGA) { id, title { romaji, english }, coverImage { large } } } } ''')
+    query = gql(''' { Page(page: 1, perPage: 15) 
+                { media(sort: TRENDING_DESC, type: MANGA) { 
+                    id, 
+                    title { romaji, english }, 
+                    coverImage { large } 
+                } } 
+            } ''')
     result = client.execute(query)
     return result.get('Page', {}).get('media', [])

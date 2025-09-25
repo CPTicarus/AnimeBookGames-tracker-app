@@ -37,7 +37,7 @@ def search_games(query):
 def get_popular_games():
     session = _get_resilient_session()
     url = f"{RAWG_API_URL}/games"
-    params = {'key': RAWG_API_KEY, 'ordering': '-added', 'page_size': 5} # Order by most recently added
+    params = {'key': RAWG_API_KEY, 'ordering': '-added', 'page_size': 15} # Order by most recently added
     response = session.get(url, params=params)
     response.raise_for_status()
     return response.json().get('results', [])

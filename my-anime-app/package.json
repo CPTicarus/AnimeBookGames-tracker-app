@@ -9,7 +9,8 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && electron .",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dist": "npm run build && electron-builder"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -41,5 +42,21 @@
     "typescript-eslint": "^8.39.1",
     "vite": "^7.1.2",
     "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.mycompany.myanimeapp",
+    "files": [
+      "dist/**",
+      "electron/**"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/backend/run_backend.exe",
+        "to": "backend/run_backend.exe"
+      }
+    ],
+    "win": {
+      "target": "nsis" 
+    }
   }
 }

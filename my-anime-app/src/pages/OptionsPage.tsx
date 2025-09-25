@@ -91,7 +91,7 @@ const OptionsPage: React.FC = () => {
           label="Dark mode"
         />
         <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-          (Placeholder) Switch between light and dark themes.
+          Switch between light and dark themes.
         </Typography>
       </Paper>
     </Box>

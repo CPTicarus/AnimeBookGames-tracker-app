@@ -7,7 +7,9 @@ __pycache__/
 venv/
 db.sqlite3
 .env
-staticfiles
+collected_static
+build
+dist
 
 # Node.js / Vite
 my-anime-app/node_modules/
@@ -15,6 +17,7 @@ my-anime-app/dist/
 my-anime-app/.env*
 my-anime-app/npm-debug.log*
 my-anime-app/yarn-error.log*
+my-anime-app/electron/backend
 
 # Editor / OS
 .vscode/
