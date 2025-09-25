@@ -20,38 +20,8 @@ app.whenReady().then(() => {
       },
     });
 
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    mainWindow.loadURL('http://localhost:5173');
   }
-
-  app.whenReady().then(() => {
-    // Start Django backend (exe packaged via extraResources)
-    const backendPath = path.join(process.resourcesPath, "backend", "run_backend.exe");
-
-    backendProcess = spawn(backendPath, [], {
-      detached: false,
-    });
-
-    backendProcess.stdout.on("data", (data) => {
-      console.log(`[Django] ${data}`);
-    });
-
-    backendProcess.stderr.on("data", (data) => {
-      console.error(`[Django ERROR] ${data}`);
-    });
-
-    createWindow();
-
-    app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
-  });
-
-  app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-      if (backendProcess) backendProcess.kill();
-      app.quit();
-    }
-  });
 
   function createAuthWindow(authUrl, callbackUrlPrefix, successEventName) {
     const authWindow = new BrowserWindow({
