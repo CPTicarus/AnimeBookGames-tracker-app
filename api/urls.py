@@ -7,6 +7,8 @@ from .views import (
     StatsView, UserMediaDeleteView, TrendsView, SyncMALView,
     MALLoginView, MALCallbackView, ProfileOptionsView,
 )
+from rest_framework.routers import DefaultRouter
+from .custom_lists_views import CustomListViewSet, CustomListEntryViewSet
 
 urlpatterns = [
     # ----------------------------------------
@@ -58,3 +60,10 @@ urlpatterns = [
     path('trends/', TrendsView.as_view(), name='trends'),
     path('csrf/', csrf_token_view, name='csrf-token'),
 ]
+
+# Custom Lists & Entries
+router = DefaultRouter()
+router.register(r'custom-lists', CustomListViewSet, basename='custom-list')
+router.register(r'custom-list-entries', CustomListEntryViewSet, basename='custom-list-entry')
+
+urlpatterns += router.urls

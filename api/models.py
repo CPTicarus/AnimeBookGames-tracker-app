@@ -68,7 +68,7 @@ class Media(models.Model):
     mal_id = models.IntegerField(unique=True, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.primary_title} ({self.get_media_type_display()})"
+        return f"{self.primary_title} ({self.get_media_type_display()})" # type: ignore
 
     class Meta:
         # Prevents duplicate entries for TMDB and Google Books, which have separate IDs for different media types.
@@ -129,3 +129,25 @@ class MALAuthRequest(models.Model):
     state = models.CharField(max_length=255, unique=True)
     code_verifier = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
+    
+class CustomList(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='custom_lists')
+    name = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'name')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.name}"
+
+class CustomListEntry(models.Model):
+    custom_list = models.ForeignKey(CustomList, on_delete=models.CASCADE, related_name='entries')
+    user_media = models.ForeignKey(UserMedia, on_delete=models.CASCADE)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('custom_list', 'user_media')
+
+    def __str__(self):
+        return f"{self.custom_list.name}: {self.user_media}"

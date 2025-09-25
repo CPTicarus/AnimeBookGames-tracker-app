@@ -20,6 +20,7 @@ import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 
 interface LayoutProps {
   onLogout: () => void;
@@ -41,6 +42,7 @@ function Layout({ onLogout }: LayoutProps) {
     { text: 'Import Lists', icon: <CloudDownloadIcon />, path: '/import' },
     { text: 'Statistics', icon: <QueryStatsIcon />, path: '/stats' },
     { text: 'Options', icon: <MenuIcon />, path: '/options' },
+    { text: 'Custom Lists', icon: <ListAltIcon />, path: '/custom-lists' },
   ];
 
   return (

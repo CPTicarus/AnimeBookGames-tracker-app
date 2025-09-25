@@ -39,6 +39,19 @@ interface UserMedia {
   score: number | null; 
 }
 
+interface CustomListEntry {
+  id: number;
+  user_media: UserMedia;
+  added_at: string;
+}
+
+interface CustomList {
+  id: number;
+  name: string;
+  created_at: string;
+  entries: CustomListEntry[];
+}
+
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'COMPLETED': return '#4CAF50';
@@ -55,6 +68,21 @@ interface LibraryPageProps {
 }
 
 function LibraryPage({ token }: LibraryPageProps) {
+  // --- Custom Lists State ---
+  const [customLists, setCustomLists] = useState<CustomList[]>([]);
+  const [customListsLoading, setCustomListsLoading] = useState(true);
+  // Fetch custom lists
+  const fetchCustomLists = async () => {
+    setCustomListsLoading(true);
+    try {
+      const response = await api.get('/api/custom-lists/');
+      setCustomLists(response.data);
+    } catch (err) {
+      console.error('Failed to fetch custom lists', err);
+    } finally {
+      setCustomListsLoading(false);
+    }
+  };
   // State for the user's library
   const [userMediaList, setUserMediaList] = useState<UserMedia[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
@@ -128,6 +156,7 @@ function LibraryPage({ token }: LibraryPageProps) {
 
   useEffect(() => {
     fetchLibrary();
+    fetchCustomLists();
   }, [token]);
 
   const handleOpenModal = (item: UserMedia) => {
@@ -374,12 +403,13 @@ function LibraryPage({ token }: LibraryPageProps) {
           Your Library
         </Typography>
       
-        {libraryLoading ? (
+  {libraryLoading ? (
           <Box display="flex" justifyContent="center" alignItems="center" sx={{ mt: 4 }}>
             <CircularProgress color="primary" />
           </Box>
         ) : (
           <Box>
+            {/* Status Accordions */}
             {sortedGroupKeys.map((status) => (
               <Accordion key={status} defaultExpanded={status === 'WATCHING' || status === 'COMPLETED'}>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -434,6 +464,80 @@ function LibraryPage({ token }: LibraryPageProps) {
                 </AccordionDetails>
               </Accordion>
             ))}
+
+            {/* Custom Lists Accordions */}
+            <Divider sx={{ my: 3 }} />
+            <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: 'secondary.main' }}>
+              Custom Lists
+            </Typography>
+            {customListsLoading ? (
+              <Box display="flex" justifyContent="center" alignItems="center" sx={{ mt: 2 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : (
+              customLists.length === 0 ? (
+                <Typography color="text.secondary">No custom lists found.</Typography>
+              ) : (
+                customLists.map((list) => (
+                  <Accordion key={list.id}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Chip
+                        label={`${list.name} (${list.entries.length})`}
+                        sx={{ bgcolor: 'secondary.main', color: '#fff', fontWeight: 'bold' }}
+                      />
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Stack spacing={2}>
+                        {list.entries.length === 0 ? (
+                          <Typography color="text.secondary">No entries in this list.</Typography>
+                        ) : (
+                          list.entries.map((entry) => (
+                            <Card
+                              key={entry.id}
+                              onClick={() => handleOpenModal(entry.user_media)}
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                p: 1,
+                                borderRadius: 2,
+                                transition: '0.2s',
+                                '&:hover': {
+                                  cursor: 'pointer',
+                                  transform: 'scale(1.02)',
+                                  boxShadow: 4,
+                                  borderColor: 'secondary.main',
+                                },
+                              }}
+                            >
+                              <CardMedia
+                                component="img"
+                                sx={{ width: 60, height: 90, borderRadius: 1, flexShrink: 0 }}
+                                image={entry.user_media.media.cover_image_url || ''}
+                              />
+                              <Box sx={{ ml: 2, flexGrow: 1 }}>
+                                <Typography variant="h6">
+                                  {entry.user_media.media.primary_title || entry.user_media.media.secondary_title}
+                                </Typography>
+                                {entry.user_media.media.secondary_title && (
+                                  <Typography variant="body2" color="text.secondary">
+                                    {entry.user_media.media.secondary_title}
+                                  </Typography>
+                                )}
+                              </Box>
+                              {entry.user_media.score && (
+                                <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'secondary.main' }}>
+                                  {entry.user_media.score.toFixed(1)}
+                                </Typography>
+                              )}
+                            </Card>
+                          ))
+                        )}
+                      </Stack>
+                    </AccordionDetails>
+                  </Accordion>
+                ))
+              )
+            )}
           </Box>
         )}
 

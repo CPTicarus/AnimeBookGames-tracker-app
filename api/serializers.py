@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Media, UserMedia, Profile
+from .models import CustomList, CustomListEntry
 
 class MediaSerializer(serializers.ModelSerializer):
     class Meta:
@@ -18,3 +19,17 @@ class ProfileOptionsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = ["keep_local_on_sync", "dark_mode", "keep_user_logged_in"]
+        
+class CustomListEntrySerializer(serializers.ModelSerializer):
+    user_media = UserMediaSerializer(read_only=True)
+
+    class Meta:
+        model = CustomListEntry
+        fields = ['id', 'user_media', 'added_at']
+
+
+class CustomListSerializer(serializers.ModelSerializer):
+    entries = CustomListEntrySerializer(many=True, read_only=True)
+    class Meta:
+        model = CustomList
+        fields = ['id', 'name', 'created_at', 'entries']

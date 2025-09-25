@@ -11,6 +11,7 @@ import Layout from './components/Layout';
 import StatsPage from './pages/StatsPage';
 import TrendsPage from './pages/TrendsPage';
 import OptionsPage from "./pages/OptionsPage";
+import CustomListPage from './pages/CustomListPage';
 
 import './App.css';
 
@@ -114,6 +115,8 @@ function App() {
         <Route path="/stats" element={<StatsPage />} /> 
         <Route path="/trends" element={<TrendsPage />} />
         <Route path="/options" element={<OptionsPage />} />
+        <Route path="/custom-list" element={<CustomListPage />} />
+        <Route path="/custom-lists" element={<CustomListPage />} />
       </Route>
     </Routes>
     </ThemeProvider>
