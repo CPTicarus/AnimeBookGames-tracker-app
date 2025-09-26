@@ -291,22 +291,22 @@ function ImportPage({ token }: { token: string }) {
         <Card variant="outlined" sx={{ borderRadius: 2 }}>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SyncIcon sx={{ color: '#171a21' }} /> Steam Games
+              <SyncIcon sx={{ color: '#214741ff' }} /> Steam Games
             </Typography>
             <Stack direction="row" spacing={2}>
               <Button
                 variant="contained"
                 startIcon={<LinkIcon />}
                 onClick={handleSteamConnect}
-                sx={{ backgroundColor: '#171a21', '&:hover': { backgroundColor: '#2a475e' } }}
+                sx={{ backgroundColor: '#214741ff', '&:hover': { backgroundColor: '#2a475e' } }}
               >
                 Connect Steam Account
               </Button>
-              <Button
+              <Button 
                 variant="outlined"
                 startIcon={<SyncIcon />}
                 onClick={handleSteamSync}
-                sx={{ color: '#171a21', borderColor: '#171a21' }}
+                sx={{ color: '#214741ff', borderColor: '#214741ff' }}
               >
                 Import Steam Library
               </Button>

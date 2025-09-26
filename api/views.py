@@ -116,12 +116,20 @@ class SteamSyncView(APIView):
                 # Create or update the game in our database
                 media, created = Media.objects.get_or_create(
                     media_type=Media.GAME,
-                    primary_title=game['name'],
+                    steam_appid=game['appid'],  # Use Steam's appid as the unique identifier
                     defaults={
+                        'primary_title': game['name'],
                         'cover_image_url': game['header_image'],
                         'description': game.get('description', ''),
                     }
                 )
+                
+                # Update the title and cover image even if the game exists
+                if not created:
+                    media.primary_title = game['name']
+                    media.cover_image_url = game['header_image']
+                    media.description = game.get('description', '')
+                    media.save()
 
                 # Create or update user's game entry with playtime
                 user_media, created = UserMedia.objects.get_or_create(

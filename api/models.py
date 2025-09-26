@@ -70,6 +70,7 @@ class Media(models.Model):
     rawg_id = models.IntegerField(unique=True, blank=True, null=True)
     google_book_id = models.CharField(unique=True, blank=True, null=True)
     mal_id = models.IntegerField(unique=True, blank=True, null=True)
+    steam_appid = models.IntegerField(unique=True, blank=True, null=True)  # Steam's unique game identifier
 
     def __str__(self):
         return f"{self.primary_title} ({self.get_media_type_display()})" # type: ignore
