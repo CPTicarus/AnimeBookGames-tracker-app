@@ -18,7 +18,7 @@ class UserMediaSerializer(serializers.ModelSerializer):
 class ProfileOptionsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ["keep_local_on_sync", "dark_mode", "keep_user_logged_in"]
+        fields = ["keep_local_on_sync", "dark_mode", "keep_user_logged_in", "use_steam_or_rawg"]
         
 class CustomListEntrySerializer(serializers.ModelSerializer):
     user_media = UserMediaSerializer(read_only=True)

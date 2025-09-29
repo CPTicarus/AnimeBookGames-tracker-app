@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../api';
 import debounce from 'lodash.debounce';
 
@@ -89,9 +89,11 @@ function LibraryPage({ token }: LibraryPageProps) {
       setCustomLists(response.data);
       // Initialize visibility for any new custom lists (default: visible)
       const vis: Record<number, boolean> = { ...visibleCustomLists };
+
       response.data.forEach((l: CustomList) => {
         if (vis[l.id] === undefined) vis[l.id] = true;
       });
+
       setVisibleCustomLists(vis);
     } catch (err) {
       console.error('Failed to fetch custom lists', err);
@@ -99,11 +101,12 @@ function LibraryPage({ token }: LibraryPageProps) {
       setCustomListsLoading(false);
     }
   };
+
   // State for the user's library
   const [userMediaList, setUserMediaList] = useState<UserMedia[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
 
-  const [sources, setSources] = useState(() => ['ANIME', 'MOVIE', 'TV_SHOW']);
+  const [sources, setSources] = useState(() => ['ANIME', 'MOVIE', 'TV_SHOW', 'GAME']);
   // State for the Autocomplete search
   const [options, setOptions] = useState<readonly Media[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -128,6 +131,7 @@ function LibraryPage({ token }: LibraryPageProps) {
 
   const fetchLibrary = async () => {
     setLibraryLoading(true);
+    
     try {
       const response = await api.get('/api/user/list/');
       setUserMediaList(response.data);
@@ -215,6 +219,36 @@ function LibraryPage({ token }: LibraryPageProps) {
     }
   };
 
+  // --- Custom list membership helpers (used inside edit dialog) ---
+  const [listOpsPending, setListOpsPending] = useState<Record<number, boolean>>({});
+
+  const toggleListMembership = async (listId: number, add: boolean) => {
+    if (!editingItem || !editingItem.id) {
+      setMessage('Save the item first to add it to custom lists.');
+      return;
+    }
+    setListOpsPending(prev => ({ ...prev, [listId]: true }));
+    try {
+      if (add) {
+        await api.post('/api/custom-list-entries/', { custom_list: listId, user_media: editingItem.id });
+      } else {
+        // find the entry id to delete
+        const list = customLists.find(l => l.id === listId);
+        const entry = list?.entries.find(e => e.user_media.id === editingItem.id);
+        if (entry) {
+          await api.delete(`/api/custom-list-entries/${entry.id}/`);
+        }
+      }
+      // Refresh lists to keep local state consistent
+      await fetchCustomLists();
+    } catch (err) {
+      console.error('Failed to toggle list membership', err);
+      setMessage('Failed to update custom lists.');
+    } finally {
+      setListOpsPending(prev => ({ ...prev, [listId]: false }));
+    }
+  };
+
   const filteredList = useMemo(() => {
     return userMediaList.filter(item => {
       // Score filter (only apply if the item has a score)
@@ -264,6 +298,122 @@ function LibraryPage({ token }: LibraryPageProps) {
     });
   }, [groupedMedia]);
 
+  // --- Virtualization: flatten grouped media + custom lists into rows ---
+  interface Row {
+    type: 'status' | 'item' | 'divider' | 'list-header' | 'list-item';
+    status?: string;
+    item?: UserMedia;
+    listId?: number;
+    entry?: CustomListEntry;
+    label?: string;
+  }
+
+  const rows = useMemo(() => {
+    const out: Row[] = [];
+
+    // statuses and their items
+    for (const status of sortedGroupKeys) {
+      if (!visibleStatuses[status]) continue;
+      out.push({ type: 'status', status, label: `${status.toLowerCase().replace('_', ' ')} (${groupedMedia[status].length})` });
+      const items = groupedMedia[status] || [];
+      for (const it of items) {
+        out.push({ type: 'item', item: it });
+      }
+    }
+
+    // divider between library and custom lists
+    out.push({ type: 'divider' });
+
+    // custom lists
+    for (const list of customLists) {
+      if (!visibleCustomLists[list.id]) continue;
+      out.push({ type: 'list-header', listId: list.id, label: `${list.name} (${list.entries.length})` });
+      for (const entry of list.entries) {
+        out.push({ type: 'list-item', entry, listId: list.id });
+      }
+    }
+
+    return out;
+  }, [sortedGroupKeys, groupedMedia, visibleStatuses, customLists, visibleCustomLists]);
+
+  // estimate heights (px) for VariableSizeList
+  const getRowHeight = useCallback((index: number) => {
+    const r = rows[index];
+    if (!r) return 48;
+    switch (r.type) {
+      case 'status': return 56;
+      case 'divider': return 24;
+      case 'list-header': return 48;
+      case 'item':
+      case 'list-item':
+        return 110; // card height (90 image + padding)
+      default: return 48;
+    }
+  }, [rows]);
+
+  // virtualization for window (page) scrolling
+  const [scrollTop, setScrollTop] = useState<number>(0);
+  const [viewportHeight, setViewportHeight] = useState<number>(typeof window !== 'undefined' ? window.innerHeight : 800);
+
+  // precompute offsets
+  const offsets = useMemo(() => {
+    const arr: number[] = [];
+    let acc = 0;
+    for (let i = 0; i < rows.length; i++) {
+      arr[i] = acc;
+      acc += getRowHeight(i);
+    }
+    (arr as any).totalHeight = acc;
+    return arr;
+  }, [rows, getRowHeight]);
+
+  useEffect(() => {
+    const onScroll = () => setScrollTop(window.scrollY || window.pageYOffset || 0);
+    const onResize = () => setViewportHeight(window.innerHeight);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+
+  const overscan = 10;
+  const firstVisibleIndex = useMemo(() => {
+    // binary search for first index where offsets[index] + rowHeight > scrollTop
+    let low = 0, high = rows.length - 1, ans = rows.length;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const top = offsets[mid];
+      const bottom = top + getRowHeight(mid);
+      if (bottom >= scrollTop) {
+        ans = mid;
+        high = mid - 1;
+      } else {
+        low = mid + 1;
+      }
+    }
+    return Math.max(0, ans - overscan);
+  }, [offsets, rows.length, scrollTop, getRowHeight]);
+
+  const lastVisibleIndex = useMemo(() => {
+    const viewBottom = scrollTop + viewportHeight;
+    let low = 0, high = rows.length - 1, ans = -1;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const top = offsets[mid];
+      if (top <= viewBottom) {
+        ans = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return Math.min(rows.length - 1, (ans === -1 ? 0 : ans) + overscan);
+  }, [offsets, rows.length, scrollTop, viewportHeight]);
+
+
   useEffect(() => {
     if (inputValue === "") {
       setOptions([]);
@@ -283,7 +433,7 @@ function LibraryPage({ token }: LibraryPageProps) {
   }, [inputValue, sources, debouncedSearch]);
 
   return (
-    <Box sx={{ display: "flex", height: "100%", p: 2, bgcolor: 'background.default' }}>
+    <Box sx={{ display: "flex", p: 2, bgcolor: 'background.default' }}>
       {/* === LEFT SIDEBAR === */}
       <Paper sx={{ width: 240, p: 2, display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0, alignSelf: 'flex-start' }}>
         <Typography variant="h6">Filters</Typography>
@@ -444,140 +594,76 @@ function LibraryPage({ token }: LibraryPageProps) {
             <CircularProgress color="primary" />
           </Box>
         ) : (
-          <Box>
-            {/* Status Accordions */}
-            {sortedGroupKeys.map((status) => (
-              visibleStatuses[status] ? (
-                <Accordion key={status} defaultExpanded={status === 'WATCHING' || status === 'COMPLETED'}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Chip
-                      label={`${status.toLowerCase().replace('_', ' ')} (${groupedMedia[status].length})`}
-                      sx={{ bgcolor: getStatusColor(status), color: '#fff', fontWeight: 'bold' }}
-                    />
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Stack spacing={2}>
-                      {groupedMedia[status].map((item) => (
-                        <Card
-                          key={item.id}
-                          onClick={() => handleOpenModal(item)}
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            p: 1,
-                            borderRadius: 2,
-                            transition: '0.2s',
-                            '&:hover': {
-                              cursor: 'pointer',
-                              transform: 'scale(1.02)',
-                              boxShadow: 4,
-                              borderColor: 'primary.main',
-                            },
-                          }}
-                        >
-                          <CardMedia
-                            component="img"
-                            sx={{ width: 60, height: 90, borderRadius: 1, flexShrink: 0 }}
-                            image={item.media.cover_image_url || ''}
-                          />
-                          <Box sx={{ ml: 2, flexGrow: 1 }}>
-                            <Typography variant="h6">
-                              {item.media.primary_title || item.media.secondary_title}
-                            </Typography>
-                            {item.media.secondary_title && (
-                              <Typography variant="body2" color="text.secondary">
-                                {item.media.secondary_title}
-                              </Typography>
-                            )}
-                          </Box>
-                          {item.score && (
-                            <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                              {item.score.toFixed(1)}
-                            </Typography>
-                          )}
-                        </Card>
-                      ))}
-                    </Stack>
-                  </AccordionDetails>
-                </Accordion>
-              ) : null
-            ))}
+          // Use page/document scrolling - render a relative container with total height
+          <Box sx={{ position: 'relative', width: '100%' }}>
+            <div style={{ height: (offsets as any).totalHeight || 0, position: 'relative' }}>
+              {rows.slice(firstVisibleIndex, lastVisibleIndex + 1).map((r, i) => {
+                const index = firstVisibleIndex + i;
+                const top = offsets[index];
+                const key = `${r.type}-${index}`;
 
-            {/* Custom Lists Accordions */}
-            <Divider sx={{ my: 3 }} />
-            <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: 'secondary.main' }}>
-              Custom Lists
-            </Typography>
-            {customListsLoading ? (
-              <Box display="flex" justifyContent="center" alignItems="center" sx={{ mt: 2 }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : (
-              customLists.length === 0 ? (
-                <Typography color="text.secondary">No custom lists found.</Typography>
-              ) : (
-                customLists.map((list) => (
-                  visibleCustomLists[list.id] ? (
-                  <Accordion key={list.id}>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Chip
-                        label={`${list.name} (${list.entries.length})`}
-                        sx={{ bgcolor: 'secondary.main', color: '#fff', fontWeight: 'bold' }}
-                      />
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      <Stack spacing={2}>
-                        {list.entries.length === 0 ? (
-                          <Typography color="text.secondary">No entries in this list.</Typography>
-                        ) : (
-                          list.entries.map((entry) => (
-                            <Card
-                              key={entry.id}
-                              onClick={() => handleOpenModal(entry.user_media)}
-                              sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                p: 1,
-                                borderRadius: 2,
-                                transition: '0.2s',
-                                '&:hover': {
-                                  cursor: 'pointer',
-                                  transform: 'scale(1.02)',
-                                  boxShadow: 4,
-                                  borderColor: 'secondary.main',
-                                },
-                              }}
-                            >
-                              <CardMedia
-                                component="img"
-                                sx={{ width: 60, height: 90, borderRadius: 1, flexShrink: 0 }}
-                                image={entry.user_media.media.cover_image_url || ''}
-                              />
-                              <Box sx={{ ml: 2, flexGrow: 1 }}>
-                                <Typography variant="h6">
-                                  {entry.user_media.media.primary_title || entry.user_media.media.secondary_title}
-                                </Typography>
-                                {entry.user_media.media.secondary_title && (
-                                  <Typography variant="body2" color="text.secondary">
-                                    {entry.user_media.media.secondary_title}
-                                  </Typography>
-                                )}
-                              </Box>
-                              {entry.user_media.score && (
-                                <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'secondary.main' }}>
-                                  {entry.user_media.score.toFixed(1)}
-                                </Typography>
-                              )}
-                            </Card>
-                          ))
+                if (r.type === 'status') {
+                  return (
+                    <div key={key} style={{ position: 'absolute', left: 0, right: 0, top }}>
+                      <Chip sx={{ bgcolor: getStatusColor(r.status || ''), color: '#fff', fontWeight: 'bold' }} label={r.label} />
+                    </div>
+                  );
+                }
+
+                if (r.type === 'divider') {
+                  return (
+                    <div key={key} style={{ position: 'absolute', left: 0, right: 0, top }}>
+                      <Divider sx={{ my: 1 }} />
+                    </div>
+                  );
+                }
+
+                if (r.type === 'list-header') {
+                  return (
+                    <div key={key} style={{ position: 'absolute', left: 0, right: 0, top }}>
+                      <Chip sx={{ bgcolor: 'secondary.main', color: '#fff', fontWeight: 'bold' }} label={r.label} />
+                    </div>
+                  );
+                }
+
+                const item = r.type === 'item' ? r.item! : r.entry!.user_media;
+                return (
+                  <div key={key} style={{ position: 'absolute', left: 0, right: 0, top }}>
+                    <Card
+                      onClick={() => handleOpenModal(item)}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        p: 1,
+                        borderRadius: 2,
+                        transition: '0.2s',
+                        '&:hover': {
+                          cursor: 'pointer',
+                          transform: 'scale(1.02)',
+                          boxShadow: 4,
+                        },
+                        mx: 1,
+                      }}
+                    >
+                      <CardMedia component="img" sx={{ width: 60, height: 90, borderRadius: 1, flexShrink: 0 }} image={item.media.cover_image_url || ''} />
+                      <Box sx={{ ml: 2, flexGrow: 1 }}>
+                        <Typography variant="h6">
+                          {item.media.primary_title || item.media.secondary_title}
+                        </Typography>
+                        {item.media.secondary_title && (
+                          <Typography variant="body2" color="text.secondary">{item.media.secondary_title}</Typography>
                         )}
-                      </Stack>
-                    </AccordionDetails>
-                  </Accordion>
-                  ) : null
-                ))
-              )
-            )}
+                      </Box>
+                      {item.score && (
+                        <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                          {item.score.toFixed(1)}
+                        </Typography>
+                      )}
+                    </Card>
+                  </div>
+                );
+              })}
+            </div>
           </Box>
         )}
 
@@ -637,6 +723,30 @@ function LibraryPage({ token }: LibraryPageProps) {
                   value={editingItem.progress || ""}
                   onChange={handleFormChange}
                 />
+                {/* Custom lists membership */}
+                <Box>
+                  <FormLabel sx={{ mb: 1 }}>Custom Lists</FormLabel>
+                  {customListsLoading ? (
+                    <Box display="flex" alignItems="center"><CircularProgress size={18} /></Box>
+                  ) : customLists.length === 0 ? (
+                    <Typography color="text.secondary">No custom lists available.</Typography>
+                  ) : (
+                    customLists.map((list) => {
+                      const isMember = !!list.entries.find(e => e.user_media.id === editingItem.id);
+                      const disabled = !editingItem.id; // can't add to list until saved
+                      return (
+                        <FormControlLabel
+                          key={`edit-cl-${list.id}`}
+                          control={<Checkbox checked={isMember} disabled={disabled || !!listOpsPending[list.id]} onChange={(_, checked) => toggleListMembership(list.id, checked)} />}
+                          label={list.name}
+                        />
+                      );
+                    })
+                  )}
+                  {!editingItem.id && (
+                    <Typography variant="caption" color="text.secondary">Save the item first to add it to custom lists.</Typography>
+                  )}
+                </Box>
               </Stack>
             </DialogContent>
 

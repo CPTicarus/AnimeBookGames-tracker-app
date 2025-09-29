@@ -307,8 +307,19 @@ class TrendsView(APIView):
             manga_future = executor.submit(anilist_service.get_trending_manga)
             movie_future = executor.submit(tmdb_service.get_trending_movies)
             tv_future = executor.submit(tmdb_service.get_trending_tv)
-            #game_future = executor.submit(rawg_service.get_popular_games)
-            game_future = executor.submit(steam_service.get_popular_games)
+            # Choose game service based on user preference (True = Steam, False = RAWG)
+            try:
+                use_steam = bool(request.user.profile.use_steam_or_rawg)  # type: ignore[attr-defined]
+            except Exception:
+                # Fallback to Steam if anything goes wrong
+                use_steam = True
+
+
+            if use_steam:
+                game_future = executor.submit(steam_service.get_popular_games)
+            else:
+                game_future = executor.submit(rawg_service.get_popular_games)
+               
             book_future = executor.submit(google_books_service.get_newest_books)
 
             # Collect results
@@ -317,20 +328,33 @@ class TrendsView(APIView):
             trends['MOVIE'] = movie_future.result()
             trends['TV_SHOW'] = tv_future.result()
             games = game_future.result()
-            trends['GAME'] = [
-                {
-                    'id': game['appid'],
-                    'name': game['name'],
-                    'header_image': game['header_image']
-                }
-                for game in games
-                if all(key in game for key in ['appid', 'name', 'header_image'])
-            ]
+            # Format game results depending on which service we used
+            if use_steam:
+                trends['GAME'] = [
+                    {
+                        'id': game.get('appid'),
+                        'name': game.get('name'),
+                        'header_image': game.get('header_image')
+                    }
+                    for game in (games or [])
+                    if game and all(key in game for key in ['appid', 'name', 'header_image'])
+                ]
+            else:
+                # RAWG returns results (list of dicts) with different keys
+                trends['GAME'] = [
+                    {
+                        'id': game.get('id'),
+                        'name': game.get('name'),
+                        'header_image': game.get('background_image')
+                    }
+                    for game in (games or [])
+                    if game and game.get('id') and game.get('name')
+                ]
             trends['BOOK'] = book_future.result()
 
         # Here we would normally process/format the data, but for now we'll send it raw
         return Response(trends)
-    
+
 # ==============================================================================
 # Authentication Views (Local & Third-Party)
 # ==============================================================================
@@ -583,6 +607,7 @@ class MediaSearchView(APIView):
     authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
+
     def get(self, request):
         query = request.query_params.get('q', None)
         if not query:
@@ -590,11 +615,11 @@ class MediaSearchView(APIView):
 
         sources_str = request.query_params.get('sources', 'ANIME,MANGA,MOVIE,TV_SHOW,GAME,BOOK')
         sources = sources_str.split(',')
-        
+       
         results = []
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future_to_source = {}
-            
+           
             if 'ANIME' in sources:
                 future_to_source[executor.submit(anilist_service.search_anime, query)] = 'ANIME'
             if 'MANGA' in sources:
@@ -604,16 +629,27 @@ class MediaSearchView(APIView):
             if 'TV_SHOW' in sources:
                 future_to_source[executor.submit(tmdb_service.search_tv_shows, query)] = 'TV_SHOW'
             if 'GAME' in sources:
-                # future_to_source[executor.submit(rawg_service.search_games, query)] = 'GAME'
-                future_to_source[executor.submit(steam_service.search_games, query)] = 'GAME'
+                # Choose which game search backend based on user preference
+                try:
+                    use_steam_search = bool(request.user.profile.use_steam_or_rawg)  # type: ignore[attr-defined]
+                except Exception:
+                    use_steam_search = True
+
+
+                if use_steam_search:
+                    future_to_source[executor.submit(steam_service.search_games, query)] = 'GAME_STEAM'
+                else:
+                    future_to_source[executor.submit(rawg_service.search_games, query)] = 'GAME_RAWG'
+                   
             if 'BOOK' in sources:
                 future_to_source[executor.submit(google_books_service.search_books, query)] = 'BOOK'
+
 
             for future in concurrent.futures.as_completed(future_to_source):
                 source_type = future_to_source[future]
                 try:
                     data = future.result()
-                    
+                   
                     if source_type == 'ANIME' or source_type == 'MANGA':
                         for item in data:
                             results.append({
@@ -638,22 +674,44 @@ class MediaSearchView(APIView):
                                 "secondary_title": item.get('original_name'), "media_type": "TV_SHOW",
                                 "cover_image_url": f"https://image.tmdb.org/t/p/w500{item['poster_path']}"
                             })
-                    elif source_type == 'GAME':
+                    elif source_type in ('GAME', 'GAME_STEAM', 'GAME_RAWG'):
+                        # Support three possible source_type values to be robust with older code paths
                         for item in data:
-                            if not item.get('tiny_image'): continue
+                            if not item:  # skip falsy entries
+                                continue
+
+
+                            # RAWG items commonly have 'background_image'
+                            rawg_img = item.get('background_image')
+                            # Steam search returns 'tiny_image' and uses 'id' and 'name'
+                            steam_img = item.get('tiny_image') or item.get('header_image')
+
+
+                            # Prefer Steam-style image if available, otherwise fall back to RAWG image
+                            cover = steam_img or rawg_img
+                            if not cover:
+                                # If no usable image, skip the item to keep results consistent
+                                continue
+
+
+                            # Decide api_source label
+                            if source_type == 'GAME_RAWG' or (rawg_img and not steam_img):
+                                api_src = 'RAWG'
+                                api_id = item.get('id')
+                            else:
+                                api_src = 'STEAM'
+                                # Steam search returns 'id' but store API sometimes uses 'appid'
+                                api_id = item.get('id') or item.get('appid')
+
+
                             results.append({
-                                "api_source": "STEAM", "api_id": item['id'], "primary_title": item['name'],
-                                "secondary_title": None, "media_type": "GAME",
-                                "cover_image_url": item['tiny_image']
+                                "api_source": api_src,
+                                "api_id": api_id,
+                                "primary_title": item.get('name') or item.get('title'),
+                                "secondary_title": None,
+                                "media_type": "GAME",
+                                "cover_image_url": cover
                             })
-                    # elif source_type == 'GAME':
-                    #     for item in data:
-                    #         if not item.get('background_image'): continue
-                    #         results.append({
-                    #             "api_source": "RAWG", "api_id": item['id'], "primary_title": item['name'],
-                    #             "secondary_title": None, "media_type": "GAME",
-                    #             "cover_image_url": item['background_image']
-                    #         })
                     elif source_type == 'BOOK':
                         for item in data:
                             volume_info = item.get('volumeInfo', {})
@@ -670,7 +728,7 @@ class MediaSearchView(APIView):
                             })
                 except Exception as exc:
                     print(f'{source_type} search generated an exception: {exc}')
-        
+       
         return Response(results)
 
 class UserMediaAddView(APIView):

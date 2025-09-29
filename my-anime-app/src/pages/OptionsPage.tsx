@@ -15,6 +15,7 @@ const OptionsPage: React.FC = () => {
     keep_local_on_sync: true,
     keep_user_logged_in: true,
     dark_mode: true,
+    use_steam_or_rawg: true,
   });
 
   // Fetch options from backend
@@ -30,7 +31,12 @@ const OptionsPage: React.FC = () => {
     setOptions({ ...options, [field]: newValue });
 
     // Send to backend for all known option fields
-    if (field === "keep_local_on_sync" || field === "dark_mode" || field === "keep_user_logged_in") {
+    if (
+      field === "keep_local_on_sync" ||
+      field === "dark_mode" ||
+      field === "keep_user_logged_in" ||
+      field === "use_steam_or_rawg"
+    ) {
       api.post("/api/options/", { [field]: newValue }).catch(() => {});
     }
 

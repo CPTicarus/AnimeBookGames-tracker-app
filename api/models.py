@@ -29,6 +29,7 @@ class Profile(models.Model):
     keep_local_on_sync = models.BooleanField(default=True)
     dark_mode = models.BooleanField(default=True)
     keep_user_logged_in = models.BooleanField(default=True)
+    use_steam_or_rawg = models.BooleanField(default=True) 
     
     def __str__(self):
         return self.user.username

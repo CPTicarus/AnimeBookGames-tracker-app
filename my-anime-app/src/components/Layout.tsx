@@ -21,6 +21,7 @@ import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 interface LayoutProps {
   onLogout: () => void;
@@ -41,8 +42,8 @@ function Layout({ onLogout }: LayoutProps) {
     { text: 'Trends', icon: <TrendingUpIcon />, path: '/trends' },
     { text: 'Import Lists', icon: <CloudDownloadIcon />, path: '/import' },
     { text: 'Statistics', icon: <QueryStatsIcon />, path: '/stats' },
-    { text: 'Options', icon: <MenuIcon />, path: '/options' },
     { text: 'Custom Lists', icon: <ListAltIcon />, path: '/custom-lists' },
+    { text: 'Options', icon: <SettingsIcon />, path: '/options' },
   ];
 
   return (
