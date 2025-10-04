@@ -197,6 +197,16 @@ function LibraryPage({ token }: LibraryPageProps) {
 
     if (editingItem.id) { // If it has an ID, it's an existing item, so we UPDATE
       try {
+        // Client-side validation: ensure score is numeric and between 0 and 10 (if provided)
+        if (editingItem.score !== null && editingItem.score !== undefined) {
+          const s = Number(editingItem.score);
+          if (Number.isNaN(s) || s < 0 || s > 10) {
+            setMessage('Score must be a number between 0 and 10.');
+            return;
+          }
+        }
+
+
         await api.patch(`/api/list/update/${editingItem.id}/`, {
           status: editingItem.status,
           score: editingItem.score,
@@ -214,6 +224,16 @@ function LibraryPage({ token }: LibraryPageProps) {
         score: editingItem.score,
         progress: editingItem.progress,
       }
+      // Validate before attempting to add
+      if (editingItem.score !== null && editingItem.score !== undefined) {
+        const s = Number(editingItem.score);
+        if (Number.isNaN(s) || s < 0 || s > 10) {
+          setMessage('Score must be a number between 0 and 10.');
+          return;
+        }
+      }
+
+
       await handleAddNewItem(newItemData as any);
       handleCloseModal();
     }

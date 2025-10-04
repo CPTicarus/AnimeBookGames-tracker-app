@@ -10,6 +10,8 @@ db.sqlite3
 collected_static
 build
 dist
+run_backend.spec
+main_js.txt
 
 # Node.js / Vite
 my-anime-app/node_modules/

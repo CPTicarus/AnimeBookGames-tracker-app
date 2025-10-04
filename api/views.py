@@ -593,11 +593,23 @@ class UserMediaUpdateView(APIView):
         if 'score' in data:
             # Allow clearing the score
             score = data['score']
-            user_media_item.score = float(score) if score is not None and score != '' else None
+            if score is None or score == '':
+                user_media_item.score = None
+            else:
+                try:
+                    score_val = float(score)
+                except (TypeError, ValueError):
+                    return Response({"error": "Score must be a number between 0 and 10."}, status=status.HTTP_400_BAD_REQUEST)
+                # Validate range
+                if score_val < 0 or score_val > 10:
+                    return Response({"error": "Score must be between 0 and 10."}, status=status.HTTP_400_BAD_REQUEST)
+                user_media_item.score = score_val
         if 'progress' in data:
             user_media_item.progress = int(data['progress']) if data['progress'] is not None and data['progress'] != '' else 0
 
+
         user_media_item.save()
+
 
         # Return the updated item
         serializer = UserMediaSerializer(user_media_item)
@@ -735,24 +747,28 @@ class UserMediaAddView(APIView):
     authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
+
     def post(self, request):
         data = request.data
         media_data = data.get('media') # The full media object will be nested
         if not media_data:
             return Response({"error": "media object is required"}, status=status.HTTP_400_BAD_REQUEST)
 
+
         api_source = media_data.get('api_source')
         api_id = media_data.get('api_id')
+
 
         if not api_source or not api_id:
             return Response({"error": "api_source and api_id are required"}, status=status.HTTP_400_BAD_REQUEST)
 
+
         try:
             # Create/update the main Media entry
             defaults = {
-                'primary_title': media_data.get('primary_title'), 
+                'primary_title': media_data.get('primary_title'),
                 'secondary_title': media_data.get('secondary_title'),
-                'cover_image_url': media_data.get('cover_image_url'), 
+                'cover_image_url': media_data.get('cover_image_url'),
                 'description': media_data.get('description'),
             }
             if api_source == 'ANILIST':
@@ -767,18 +783,35 @@ class UserMediaAddView(APIView):
                 return Response({"error": "Invalid api_source"}, status=status.HTTP_400_BAD_REQUEST)
 
 
+
+
+            # Validate score if provided (allow clearing)
+            score_raw = data.get('score')
+            if score_raw is None or score_raw == '':
+                score_val = None
+            else:
+                try:
+                    score_val = float(score_raw)
+                except (TypeError, ValueError):
+                    return Response({"error": "Score must be a number between 0 and 10."}, status=status.HTTP_400_BAD_REQUEST)
+                if score_val < 0 or score_val > 10:
+                    return Response({"error": "Score must be between 0 and 10."}, status=status.HTTP_400_BAD_REQUEST)
+
+
             user_media_defaults = {
                 'status': data.get('status', 'PLANNED'),
-                'score': data.get('score'),
+                'score': score_val,
                 'progress': data.get('progress', 0)
             }
 
+
             profile = request.user.profile
             user_media_item, created = UserMedia.objects.get_or_create(
-                profile=profile, 
-                media=media_obj, 
+                profile=profile,
+                media=media_obj,
                 defaults=user_media_defaults
             )
+
 
             if created:
                 return Response({"success": f"'{media_obj.primary_title}' added to your list."}, status=status.HTTP_201_CREATED)
