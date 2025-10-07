@@ -1,0 +1,90 @@
+Den 101 Individual Use & Attribution License (D101-IUAL) v1.0  
+Copyright (c) 2025 CPTicarus
+
+Definitions
+-----------
+"Software" means the contents of this repository (source code, binaries,
+documentation, and other files) as distributed by the copyright holder.
+
+"Individual" means a natural person acting in their personal capacity and not
+acting on behalf of or as a representative of an Organization.
+
+"Organization" means any legal entity or group other than an Individual,
+including but not limited to: corporations, limited liability companies,
+partnerships, firms, non-profit organizations, government entities, or any
+entity that employs, represents or is controlled by multiple persons.
+
+"Commercial use" means any use primarily intended for commercial advantage or
+monetary compensation. Commercial use by an Organization includes, but is not
+limited to, offering the Software or a derivative as a paid product or service,
+incorporating the Software into a product or service that is sold or charged,
+or using the Software to provide paid services to customers.
+
+Grant of Rights to Individuals
+-------------------------------
+Subject to the terms below, the copyright holder hereby grants to any
+Individual a worldwide, royalty-free, non-exclusive license to:
+
+  * Use, copy, modify and create derivative works of the Software;
+  * Reproduce, distribute, publish or sell copies of the Software or derivative
+    works (including for monetary gain), provided the Individual complies with
+    the Attribution requirement below.
+
+Grant of Rights to Organizations (Non-Commercial Only)
+------------------------------------------------------
+Subject to the terms below, the copyright holder hereby grants to Organizations
+a worldwide, royalty-free, non-exclusive license to use, copy, modify, and
+distribute the Software **only for non-commercial purposes.** Organizations are
+strictly prohibited from any Commercial Use of the Software.
+
+Attribution Requirement
+-----------------------
+Any distribution (source or binary), public display, or publication of the
+Software or any derivative work by an Individual or Organization must include
+all of the following:
+
+  1. A visible statement that the work is based on "Den 101" by the original
+     author;
+  2. The original copyright notice:
+     "Copyright (c) 2025 CPTicarus";
+  3. A link or pointer to the original repository (for example, a GitHub URL).
+
+If the distribution or use is in a medium where a visible statement is
+impractical (for example, a small binary splash screen), include the required
+attribution in an accompanying text file or documentation.
+
+Prohibited Uses
+---------------
+Organizations shall not use the Software for Commercial Use. Organizations
+shall not sell, sublicense, host as a paid service (SaaS), or otherwise offer
+the Software or derivative works for monetary compensation.
+
+Nothing in this license prevents an Organization from informing or offering the
+Software to its members or the public for non-commercial purposes (for example,
+research, internal evaluation, education, or community development), provided
+attribution is preserved.
+
+Reasonable Interpretation and Enforcement
+-----------------------------------------
+If a question arises whether a use is "Commercial" or whether an entity is an
+"Organization", the parties should seek to resolve the matter in good faith;
+however the copyright holder reserves the right to take appropriate legal
+action to enforce this license.
+
+Disclaimer of Warranty and Liability
+------------------------------------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Severability
+------------
+If any provision of this license is held to be unenforceable, the remainder
+shall continue in full force and effect.
+
+Version
+-------
+This is D101-IUAL v1.0, published October 2025.
