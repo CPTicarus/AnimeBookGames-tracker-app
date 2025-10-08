@@ -36,7 +36,7 @@ It runs entirely on your machine for privacy and flexibility.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/CPTicarus/Den101.git
+git clone https://github.com/CPTicarus/Den_101.git
 cd Den101
 ```
 
